@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+logs/
+experiments/raw/
+.DS_Store
+data/replays/
+
+# Local configuration and build artifacts
+.env
+.env.*
+!.env.example
+**/bin/
+**/obj/
+**/.godot/
+voice/models/
+voice/recordings/
+voice/.local/
+voice/dist/
+voice/build/
+
+# Relocated legacy runtime output
+game/legacy/data/replays/
+game/legacy/experiments/raw/

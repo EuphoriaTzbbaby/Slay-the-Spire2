@@ -1,0 +1,663 @@
+{
+  "run_status": "slides_recorded",
+  "deck_name": "AI双排助手_开题答辩PPT",
+  "selected_backend": "built-in image tool",
+  "sample_generation_method": {
+    "backend_used": "built-in image tool",
+    "tool_name": "image_gen",
+    "mode": "generate",
+    "prompt_source": "approved Slide 7 sample prompt and one mascot-correction edit",
+    "size": "built-in default 16:9 landscape",
+    "quality": "built-in default",
+    "model_config": "built-in default; exact model not exposed",
+    "approved_sample_path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+    "input_context_preparation": "local required images inspected with view_image; referenced_image_paths supplied to built-in image_gen",
+    "handoff_rule": "Subagents must use the same built-in image_gen tool in generate mode and return a blocker if unavailable."
+  },
+  "max_concurrent_slides": 3,
+  "slides": [
+    {
+      "slide_id": "slide_01",
+      "number": 1,
+      "title": "《杀戮尖塔 2》AI 双排助手",
+      "job": "prompts/slide_01.json",
+      "out": "origin_image/slide_01.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/07_ironclad.jpg",
+          "role": "strict input asset; right-side main visual",
+          "fidelity": "preserve game UI, Chinese text, numbers, character artwork and aspect ratio; do not redraw"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_01",
+        "agent_nickname": "ai_ppt_slide_01",
+        "prompt": "prompts/slide_01.json",
+        "prompt_sha256": "4e6d271dfc1d3c4a9b31339f0f0ba66a76f87e4fd90f7b9dfbd99997fd7968d1",
+        "dispatched_at": "2026-10-26T02:14:19Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_01",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a175f2-d350-7e82-8d35-7c38fbd9103b/exec-3665fa00-d6db-4f1b-b401-d8d80930133d.png",
+        "selected_source_sha256": "fb49307a4bac22336296dd1ae64e094cbba3a6a155cff51bd0d3bce00effc5c1",
+        "final_image": "origin_image/slide_01.png",
+        "final_image_sha256": "fb49307a4bac22336296dd1ae64e094cbba3a6a155cff51bd0d3bce00effc5c1",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Cover text readable; mascot matches approved anatomy; supplied character screenshot is visibly included.",
+        "recorded_at": "2026-10-26T02:15:16Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_02",
+      "number": 2,
+      "title": "卡牌构筑 Roguelike 的连续决策",
+      "job": "prompts/slide_02.json",
+      "out": "origin_image/slide_02.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/05_map_act1.jpg",
+          "role": "strict input asset; route-planning evidence",
+          "fidelity": "preserve all map nodes, legends, UI and text; do not redraw"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/06_combat_cards.jpg",
+          "role": "strict input asset; turn-level combat evidence",
+          "fidelity": "preserve cards, numbers, UI and text; do not redraw"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_02",
+        "agent_nickname": "ai_ppt_slide_02",
+        "prompt": "prompts/slide_02.json",
+        "prompt_sha256": "f93ba04fe2ef8ab199e7eeb41e09442ae4c2471bb932d86302123955d5914935",
+        "dispatched_at": "2026-10-26T02:14:19Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_02",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a175f3-4894-7d73-af96-5f16ed4a9e9c/exec-cec4b1f6-809c-4243-8cdd-251415eb5ad2.png",
+        "selected_source_sha256": "e811a8c3cb53329ce42881d70227348d5f7eaf32653a43b5eb9fcd0523b4afa4",
+        "final_image": "origin_image/slide_02.png",
+        "final_image_sha256": "e811a8c3cb53329ce42881d70227348d5f7eaf32653a43b5eb9fcd0523b4afa4",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Title and four decisions are readable; both required screenshots are clearly embedded; style matches sample.",
+        "recorded_at": "2026-10-26T02:15:16Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_03",
+      "number": 3,
+      "title": "玩家需要的是“懂局势的队友”",
+      "job": "prompts/slide_03.json",
+      "out": "origin_image/slide_03.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/02_coop_commentary.jpg",
+          "role": "strict input asset; main scenario evidence",
+          "fidelity": "preserve all visible game and stream overlay content; do not redraw or edit"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_03",
+        "agent_nickname": "ai_ppt_slide_03",
+        "prompt": "prompts/slide_03.json",
+        "prompt_sha256": "9f04f5ecf9e3df7ef346d76ad67c53386ead55fbea944dbd053d92c2c20a202f",
+        "dispatched_at": "2026-10-26T02:14:19Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_03",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a175fa-fa03-7190-8e12-e5cb1b594be0/exec-b877e701-cbf9-4bef-886a-0c528864b27c.png",
+        "selected_source_sha256": "592cf8c0b9753c070b68c6d60045a3d08d664714b72007cda728b8090743f3bb",
+        "final_image": "origin_image/slide_03.png",
+        "final_image_sha256": "592cf8c0b9753c070b68c6d60045a3d08d664714b72007cda728b8090743f3bb",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Four needs are readable; required co-op screenshot is visibly embedded; mascot and palette match sample.",
+        "recorded_at": "2026-10-26T02:16:16Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_04",
+      "number": 4,
+      "title": "现有方案各自解决了一部分",
+      "job": "prompts/slide_04.json",
+      "out": "origin_image/slide_04.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_04",
+        "agent_nickname": "ai_ppt_slide_04",
+        "prompt": "prompts/slide_04.json",
+        "prompt_sha256": "e7aff38c945923e876ade6122889b948815422525f23ab2b151e2c3498b9e12c",
+        "dispatched_at": "2026-10-26T02:17:22Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_04",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a175fe-ba4a-7312-9126-cb442190a232/exec-e58e483d-b09c-4737-86e0-fcc17a7ecde1.png",
+        "selected_source_sha256": "c0d134912bff558e074ee39329f821329f84f52a08fb9e6af549943ae5029545",
+        "final_image": "origin_image/slide_04.png",
+        "final_image_sha256": "c0d134912bff558e074ee39329f821329f84f52a08fb9e6af549943ae5029545",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Three方案 names and limitations are legible; convergence to AI双排助手 is clear; style matches sample.",
+        "recorded_at": "2026-10-26T02:25:48Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_05",
+      "number": 5,
+      "title": "战术脑、表达脑与双人身体",
+      "job": "prompts/slide_05.json",
+      "out": "origin_image/slide_05.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_05",
+        "agent_nickname": "ai_ppt_slide_05",
+        "prompt": "prompts/slide_05.json",
+        "prompt_sha256": "bfc19d2e0da233cccece4356df7f9cebb7cc81526d13bd8cad6b41de93a6427f",
+        "dispatched_at": "2026-10-26T02:17:22Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_05",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a175fe-ea0a-7ae0-8309-85ce6598d960/exec-95942600-ed80-4de3-b272-7467a33308b5.png",
+        "selected_source_sha256": "707ef1e8de6c28c8f4488194e745cded79960fb0a8e7b7f8592aee308f20b3eb",
+        "final_image": "origin_image/slide_05.png",
+        "final_image_sha256": "707ef1e8de6c28c8f4488194e745cded79960fb0a8e7b7f8592aee308f20b3eb",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "The three-part concept and safety layer are readable; mascot anatomy and soft 3D style match sample.",
+        "recorded_at": "2026-10-26T02:25:48Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_06",
+      "number": 6,
+      "title": "混合架构与数据流",
+      "job": "prompts/slide_06.json",
+      "out": "origin_image/slide_06.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_06",
+        "agent_nickname": "ai_ppt_slide_06",
+        "prompt": "prompts/slide_06.json",
+        "prompt_sha256": "a4654013cd97e866df38818402c9a41639f20f70f6bbc8f0b9da7f7c33b0c69a",
+        "dispatched_at": "2026-10-26T02:17:22Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_06",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a175ff-2561-7fe3-ac21-e4d1691066ef/exec-13185c4c-8601-4f05-ae81-41c2553c928f.png",
+        "selected_source_sha256": "c54c79e4b92da69d74b0b284f9874a085cbc347fe69a32b4d84f08275e9edd29",
+        "final_image": "origin_image/slide_06.png",
+        "final_image_sha256": "c54c79e4b92da69d74b0b284f9874a085cbc347fe69a32b4d84f08275e9edd29",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Five-stage architecture flow is readable; LLM constraints are explicit; mascot and visual system match sample.",
+        "recorded_at": "2026-10-26T02:19:49Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_07",
+      "number": 7,
+      "title": "当场出牌与抓牌建议",
+      "job": "prompts/slide_07.json",
+      "out": "origin_image/slide_07.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/01_deck.jpg",
+          "role": "strict input asset; deck evidence",
+          "fidelity": "preserve screenshot content exactly"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/09_card_reward.jpg",
+          "role": "strict input asset; card reward evidence",
+          "fidelity": "preserve screenshot content exactly"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "accepted",
+      "dispatch": null,
+      "result": {
+        "final_image": "origin_image/slide_07.png",
+        "accepted_sample": true
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_08",
+      "number": 8,
+      "title": "自动执行与人工接管",
+      "job": "prompts/slide_08.json",
+      "out": "origin_image/slide_08.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/04_combat_relics.jpg",
+          "role": "strict input asset; complex combat-state evidence",
+          "fidelity": "preserve cards, relics, numbers, UI, text and aspect ratio; do not redraw"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_08",
+        "agent_nickname": "ai_ppt_slide_08",
+        "prompt": "prompts/slide_08.json",
+        "prompt_sha256": "4fb50101b1a5d6e2efea3070c96c34998687aabde3467d29470552478c063105",
+        "dispatched_at": "2026-10-26T02:42:02Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_08",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a17607-bfeb-7eb2-a17f-c5941a055aff/exec-7bfdeda7-976a-4c05-9867-9541d722585d.png",
+        "selected_source_sha256": "7f1134d912b7cc39b93bcb96e9c3d8b5afcc0ada5ff3dd6baf31fefe05dd837d",
+        "final_image": "origin_image/slide_08.png",
+        "final_image_sha256": "7f1134d912b7cc39b93bcb96e9c3d8b5afcc0ada5ff3dd6baf31fefe05dd837d",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Automatic execution flow and takeover controls are readable; required combat screenshot and mascot are included.",
+        "recorded_at": "2026-10-26T02:43:05Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_09",
+      "number": 9,
+      "title": "情绪价值与语音陪伴",
+      "job": "prompts/slide_09.json",
+      "out": "origin_image/slide_09.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/10_event_relic.jpg",
+          "role": "strict input asset; dialogue and reward-choice scenario",
+          "fidelity": "preserve all game UI, reward text, numbers and image content; do not redraw"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_09",
+        "agent_nickname": "ai_ppt_slide_09",
+        "prompt": "prompts/slide_09.json",
+        "prompt_sha256": "ce5e552e6c04ef5e89753f8a7485e81a09667d0f9bb21d7482d36b90e69482b6",
+        "dispatched_at": "2026-10-26T02:42:02Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_09",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a17608-03be-7e02-913c-61b27c6d5791/exec-07b9578d-c98d-4d8e-b524-092d00229829.png",
+        "selected_source_sha256": "42ff67b825b73489f7250d1526c2968001c5c08f9656336ce635417313ba6721",
+        "final_image": "origin_image/slide_09.png",
+        "final_image_sha256": "42ff67b825b73489f7250d1526c2968001c5c08f9656336ce635417313ba6721",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Companion principles and speech bubble are readable; event screenshot is prominently embedded; style matches sample.",
+        "recorded_at": "2026-10-26T02:43:05Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_10",
+      "number": 10,
+      "title": "AI 作为第二个玩家",
+      "job": "prompts/slide_10.json",
+      "out": "origin_image/slide_10.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/02_coop_commentary.jpg",
+          "role": "strict input asset; direct evidence of two-character co-op and commentary",
+          "fidelity": "preserve every visible UI and overlay element; do not redraw"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_10",
+        "agent_nickname": "ai_ppt_slide_10",
+        "prompt": "prompts/slide_10.json",
+        "prompt_sha256": "d218fa6b644a5c051609022cfb6c205aa0c3ead5dd39a136ffac7234eafc153a",
+        "dispatched_at": "2026-10-26T02:42:02Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_10",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a17614-d41d-79d1-be16-64bb15ec06de/exec-9a866702-f2d3-4b95-9db5-f24246ecd911.png",
+        "selected_source_sha256": "c571decfd1bf0d20f3f2b616530a32b1eefe7fa3d20d3089b0647bf455db4a39",
+        "final_image": "origin_image/slide_10.png",
+        "final_image_sha256": "c571decfd1bf0d20f3f2b616530a32b1eefe7fa3d20d3089b0647bf455db4a39",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Human and AI roles are clearly called out; required co-op screenshot is visible; engineering issues are readable.",
+        "recorded_at": "2026-10-26T03:23:46Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_11",
+      "number": 11,
+      "title": "让系统既“不蠢”又“像队友”",
+      "job": "prompts/slide_11.json",
+      "out": "origin_image/slide_11.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_11",
+        "agent_nickname": "ai_ppt_slide_11",
+        "prompt": "prompts/slide_11.json",
+        "prompt_sha256": "7279828fd3a40e77b050676b7b0a8bf878c0ad5af5e3fe7ce82f71dfe69e7968",
+        "dispatched_at": "2026-10-26T03:25:52Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_11",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/slide_11.png",
+        "selected_source_sha256": "f5282226e355748d8977488ac4ffb115070a15609f2f6b509ca1a9bd48a7ffa0",
+        "final_image": "origin_image/slide_11.png",
+        "final_image_sha256": "f5282226e355748d8977488ac4ffb115070a15609f2f6b509ca1a9bd48a7ffa0",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Five technical and innovation points are readable; two-axis composition and mascot match the deck style.",
+        "recorded_at": "2026-10-26T03:28:25Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_12",
+      "number": 12,
+      "title": "项目基于现有开源能力组合实现",
+      "job": "prompts/slide_12.json",
+      "out": "origin_image/slide_12.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/08_map_act3.jpg",
+          "role": "strict input asset; route-convergence metaphor and evidence image",
+          "fidelity": "preserve map nodes, legend, UI and all text; do not redraw"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_12",
+        "agent_nickname": "ai_ppt_slide_12",
+        "prompt": "prompts/slide_12.json",
+        "prompt_sha256": "d86fb800c7636a301da506f56bba5979bc0df573a9cd5997cfe0cd98f6abc67b",
+        "dispatched_at": "2026-10-26T03:25:52Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_12",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/slide_12.png",
+        "selected_source_sha256": "969f9433c62ce3e43db7436f632897845c87675b6d175fc2559220befcd90a62",
+        "final_image": "origin_image/slide_12.png",
+        "final_image_sha256": "969f9433c62ce3e43db7436f632897845c87675b6d175fc2559220befcd90a62",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Four reusable foundations and fallback deliverable are readable; supplied map screenshot is prominently included.",
+        "recorded_at": "2026-10-26T03:28:25Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_13",
+      "number": 13,
+      "title": "战术、体验与工程三类指标",
+      "job": "prompts/slide_13.json",
+      "out": "origin_image/slide_13.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_13",
+        "agent_nickname": "ai_ppt_slide_13",
+        "prompt": "prompts/slide_13.json",
+        "prompt_sha256": "f421418ffae287badf18eda82e3d772558c019625e1a13c33f81189b350977d9",
+        "dispatched_at": "2026-10-26T03:25:52Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_13",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a1763d-fcf6-7700-9fa1-c23b6ea1ac88/exec-470e1a75-e14a-482e-a96f-4ce9cf2f16c9.png",
+        "selected_source_sha256": "0927ae0e48f8136c4bf17c9454c28fe5f3e2a2c83edb07e25600a6338c67d797",
+        "final_image": "origin_image/slide_13.png",
+        "final_image_sha256": "0927ae0e48f8136c4bf17c9454c28fe5f3e2a2c83edb07e25600a6338c67d797",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Evaluation metrics and method are readable; no fabricated results are shown; style matches sample.",
+        "recorded_at": "2026-10-26T03:28:25Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_14",
+      "number": 14,
+      "title": "12 周分阶段交付",
+      "job": "prompts/slide_14.json",
+      "out": "origin_image/slide_14.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/05_map_act1.jpg",
+          "role": "strict input asset reused as roadmap background",
+          "fidelity": "preserve map nodes, legend and UI; do not redraw; may reduce contrast uniformly without altering content"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_14",
+        "agent_nickname": "ai_ppt_slide_14",
+        "prompt": "prompts/slide_14.json",
+        "prompt_sha256": "747dffd270146384914e0a0d38013b1f6f3d12756599bb3ba47c18e78cb9e6cd",
+        "dispatched_at": "2026-10-26T03:29:11Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_14",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/.codex/generated_images/01a15c25-7e8d-7b50-821c-e09e6f678242/exec-faddde8a-e8c8-43e7-bcbf-e5d046c2ebf9.png",
+        "selected_source_sha256": "59e66ba2543d57ff849b07e7ad1dfecf6602eba7f55c5b6d2204422b51af0215",
+        "final_image": "origin_image/slide_14.png",
+        "final_image_sha256": "59e66ba2543d57ff849b07e7ad1dfecf6602eba7f55c5b6d2204422b51af0215",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Parent completed after the assigned worker hit usage limit and the user explicitly asked to continue; timeline, team roles and risks are readable, and the map screenshot is included.",
+        "recorded_at": "2026-10-26T03:44:41Z"
+      },
+      "blocker": null
+    },
+    {
+      "slide_id": "slide_15",
+      "number": 15,
+      "title": "可演示、可评估、可复现的 AI 双排原型",
+      "job": "prompts/slide_15.json",
+      "out": "origin_image/slide_15.png",
+      "input_images": [
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+          "role": "approved sample slide style reference",
+          "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+        },
+        {
+          "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/assets/game_screenshots/03_event_reward.jpg",
+          "role": "strict input asset; closing visual and deliverable metaphor",
+          "fidelity": "preserve all game UI, Chinese text and reward entries; do not redraw"
+        }
+      ],
+      "requires_context_images": true,
+      "status": "recorded",
+      "dispatch": {
+        "agent_id": "/root/ai_ppt_slide_15",
+        "agent_nickname": "ai_ppt_slide_15",
+        "prompt": "prompts/slide_15.json",
+        "prompt_sha256": "c751dab198e0edbdbfbb937cd4491559c9ca9f470045990f8aae42f661bcb27c",
+        "dispatched_at": "2026-10-26T03:29:11Z"
+      },
+      "result": {
+        "agent_id": "/root/ai_ppt_slide_15",
+        "backend_used": "built-in image tool",
+        "selected_source": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/slide_15.png",
+        "selected_source_sha256": "9f096ecb3728d181146e7fbb5bbd30bfae6363f7a90dbe1a5a293ddb693c4853",
+        "final_image": "origin_image/slide_15.png",
+        "final_image_sha256": "9f096ecb3728d181146e7fbb5bbd30bfae6363f7a90dbe1a5a293ddb693c4853",
+        "expected_backend": "built-in image tool",
+        "expected_backend_labels": [
+          "built-in image tool",
+          "image_gen"
+        ],
+        "sample_generation_method_matched": true,
+        "qa_note": "Closing deliverables, takeaway and thanks are readable; required event screenshot and mascot are included.",
+        "recorded_at": "2026-10-26T03:34:19Z"
+      },
+      "blocker": null
+    }
+  ],
+  "updated_at": "2026-10-26T03:44:41Z"
+}

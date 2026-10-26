@@ -1,0 +1,79 @@
+{
+  "Trigger": "OnTurnStarted",
+  "TurnNumber": 1,
+  "Player": {
+    "CurrentHp": 60,
+    "MaxHp": 80,
+    "Energy": 3,
+    "MaxEnergy": 3
+  },
+  "Piles": {
+    "HandPile": [
+      {
+        "Card_Name": "STRIKE_IRONCLAD",
+        "Card_ID": 100
+      },
+      {
+        "Card_Name": "DEFEND_IRONCLAD",
+        "Card_ID": 101
+      },
+      {
+        "Card_Name": "BASH",
+        "Card_ID": 102
+      },
+      {
+        "Card_Name": "ANGER",
+        "Card_ID": 103
+      }
+    ]
+  },
+  "Enemies": [
+    {
+      "Index": 0,
+      "MonsterId": "NIBBIT",
+      "CurrentHp": 30,
+      "MaxHp": 45,
+      "Intents": [
+        {
+          "Type": "Attack",
+          "Damage": 8,
+          "Hits": 1
+        }
+      ]
+    }
+  ],
+  "CardCatalog": [
+    {
+      "CardId": "STRIKE_IRONCLAD",
+      "Cost": "1",
+      "TargetType": "AnyEnemy",
+      "Damage": 6,
+      "Block": 0,
+      "AppliesVulnerable": 0
+    },
+    {
+      "CardId": "DEFEND_IRONCLAD",
+      "Cost": "1",
+      "TargetType": "Self",
+      "Damage": 0,
+      "Block": 5,
+      "AppliesVulnerable": 0
+    },
+    {
+      "CardId": "BASH",
+      "Cost": "2",
+      "TargetType": "AnyEnemy",
+      "Damage": 8,
+      "Block": 0,
+      "AppliesVulnerable": 2
+    },
+    {
+      "CardId": "ANGER",
+      "Cost": "1",
+      "TargetType": "AnyEnemy",
+      "Damage": 6,
+      "Block": 0,
+      "AppliesVulnerable": 0
+    }
+  ]
+}

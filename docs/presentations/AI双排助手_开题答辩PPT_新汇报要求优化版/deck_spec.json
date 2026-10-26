@@ -1,0 +1,198 @@
+{
+  "deck_name": "AI双排助手_开题答辩PPT",
+  "language": "Chinese",
+  "goal": "用约15页清晰说明《杀戮尖塔2》AI双排助手的研究问题、方案、功能、技术路线、可行性、评估与计划。",
+  "deck_context": {
+    "source_summary": "项目面向《杀戮尖塔2》的复杂卡牌构筑与双人协作场景，组合战斗搜索、LLM人格表达、语音陪伴和双实例co-op，形成能建议、能自动执行并能作为第二玩家协作的AI搭子。",
+    "core_claim": "solver保证战术可靠，LLM负责队友表达，co-op提供共同游玩。",
+    "canonical_terms": ["AI 双排助手", "战术脑", "表达脑", "游戏身体", "合法动作校验", "人工接管"],
+    "mascot_reference": "奶龙造型必须沿用已批准样稿：圆胖软糯的3D黄橙色身体、绿色大眼、米白肚皮、短圆手臂、无翅膀、无角、无尖刺、极简表情。"
+  },
+  "selected_image_backend": "built-in image tool",
+  "max_concurrent_slides": 3,
+  "sample_generation_method": {
+    "backend_used": "built-in image tool",
+    "tool_name": "image_gen",
+    "mode": "generate",
+    "prompt_source": "approved Slide 7 sample prompt and one mascot-correction edit",
+    "size": "built-in default 16:9 landscape",
+    "quality": "built-in default",
+    "model_config": "built-in default; exact model not exposed",
+    "approved_sample_path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+    "input_context_preparation": "local required images inspected with view_image; referenced_image_paths supplied to built-in image_gen",
+    "handoff_rule": "Subagents must use the same built-in image_gen tool in generate mode and return a blocker if unavailable."
+  },
+  "style": {
+    "name": "奶龙风开题答辩",
+    "visual_direction": "soft rounded 3D toy-like presentation design with the approved milk-dragon mascot, cheerful but academically clear",
+    "color_palette": "cream #FFF7E6, pastel yellow #FFD76A, light orange #FFAD5A, warm brown #6B4B35, small mint accent #8FD3B6",
+    "typography": "large bold rounded Chinese sans-serif titles, clean readable Chinese sans-serif body, strong hierarchy and generous spacing",
+    "texture_and_finish": "soft 3D clouds and stars, rounded surfaces, restrained warm shadows, no dark full-slide backgrounds",
+    "deck_consistency": "match the approved sample palette, typography mood, mascot anatomy, rounded 3D finish and information density; vary layout by slide role"
+  },
+  "approved_style_reference": {
+    "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+    "role": "approved sample slide style reference",
+    "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+  },
+  "slides": [
+    {
+      "number": 1,
+      "title": "《杀戮尖塔 2》AI 双排助手",
+      "role": "cover",
+      "intent": "用游戏角色画面与奶龙搭子建立项目主题",
+      "key_points": ["开题报告", "汇报人：谭志宝、向洪波、马萌阳、付嘉毅、胡真健", "日期：2026-10-26", "能看牌、能算牌、能陪聊、能协作"],
+      "local_context": {"required_background": "标题必须简洁，封面不放技术细节。"},
+      "layout": {"composition": "左侧大标题和汇报信息，右侧大幅角色截图，奶龙从边缘探出作为AI队友"},
+      "visual_elements": {"main_visual": "角色选择截图与批准样稿同造型的奶龙搭子"},
+      "constraints": ["保持极简", "不要目录", "不要页码"],
+      "required_images": [{"path": "assets/game_screenshots/07_ironclad.jpg", "role": "strict input asset; right-side main visual", "fidelity": "preserve game UI, Chinese text, numbers, character artwork and aspect ratio; do not redraw"}]
+    },
+    {
+      "number": 2,
+      "title": "卡牌构筑 Roguelike 的连续决策",
+      "role": "context",
+      "intent": "用地图与战斗说明长程规划和回合战术并存",
+      "key_points": ["路线、战斗、选牌、遗物与事件构成连续决策", "回合内要处理能量、手牌、敌人意图和出牌顺序", "当前选择会影响后续牌组强度与生存风险", "co-op 进一步增加同步、分工和沟通"],
+      "layout": {"composition": "左右双场景，地图与战斗画面之间用柔和路径连接，文字短而清楚"},
+      "visual_elements": {"main_visual": "地图和战斗两张严格截图"},
+      "required_images": [
+        {"path": "assets/game_screenshots/05_map_act1.jpg", "role": "strict input asset; route-planning evidence", "fidelity": "preserve all map nodes, legends, UI and text; do not redraw"},
+        {"path": "assets/game_screenshots/06_combat_cards.jpg", "role": "strict input asset; turn-level combat evidence", "fidelity": "preserve cards, numbers, UI and text; do not redraw"}
+      ]
+    },
+    {
+      "number": 3,
+      "title": "玩家需要的是“懂局势的队友”",
+      "role": "problem framing",
+      "intent": "围绕真实双角色画面说明四项核心需求",
+      "key_points": ["看得懂：读取手牌、牌组、遗物、药水、敌人意图与路线", "打得对：提供合法、可解释的出牌与抓牌建议", "说人话：在关键节点提供中文解说、鼓励与复盘", "能协作：自动执行自己的动作，并作为第二个角色参与 co-op"],
+      "layout": {"composition": "双角色截图居中偏左，右侧四个能力以一条纵向故事线呈现"},
+      "visual_elements": {"main_visual": "双角色实战与解说场景"},
+      "required_images": [{"path": "assets/game_screenshots/02_coop_commentary.jpg", "role": "strict input asset; main scenario evidence", "fidelity": "preserve all visible game and stream overlay content; do not redraw or edit"}]
+    },
+    {
+      "number": 4,
+      "title": "现有方案各自解决了一部分",
+      "role": "comparison",
+      "intent": "比较三条技术路线并指出组合空白",
+      "key_points": ["Spire Buddy：游戏内聊天与自动游玩完整，复杂战斗、语音和双排不足", "STS2-Agent：具备双实例 co-op 与外部接口，配置和兼容成本较高", "CombatSolver：战斗搜索强，但响应慢且缺少陪伴表达", "空白：强战术、情绪价值、语音与双排尚未形成统一体验"],
+      "layout": {"composition": "三条柔和弧线从三个方案汇向中央的AI双排助手，避免三张等宽卡片"},
+      "visual_elements": {"main_visual": "奶龙牵引三条不同颜色的能力路径汇合"},
+      "constraints": ["不要加入未经来源支持的竞品数据", "方案名必须准确"]
+    },
+    {
+      "number": 5,
+      "title": "战术脑、表达脑与双人身体",
+      "role": "concept",
+      "intent": "建立项目总体定位",
+      "key_points": ["战术脑：搜索、模拟和数值判断", "表达脑：人格、解释、复盘和语音", "游戏身体：读取状态、执行合法动作并进入 co-op", "安全层：快照校验、预算、暂停与人工接管"],
+      "layout": {"composition": "奶龙站在中央，三部分呈环形关系，安全层作为底部托盘"},
+      "visual_elements": {"main_visual": "批准造型的3D奶龙与三个功能模块"},
+      "constraints": ["模块标签必须准确", "不要绘制复杂UI面板"]
+    },
+    {
+      "number": 6,
+      "title": "混合架构与数据流",
+      "role": "architecture",
+      "intent": "说明从游戏状态到建议、语音和动作执行的完整链路",
+      "key_points": ["游戏状态经 adapter 转为统一快照", "exact、beam 与 rollout 生成候选动作和战损预测", "LLM 读取结构化结果，生成人格化解释", "合法动作校验后由 overlay 或 co-op 实例执行", "TTS 以可打断队列输出语音"],
+      "layout": {"composition": "从左到右的五段数据流，连接线保持水平或垂直，奶龙在表达脑节点旁"},
+      "visual_elements": {"main_visual": "可读的技术流程图，强调LLM不直接计算和不直接操作游戏对象"},
+      "constraints": ["所有节点文字准确", "连接线不得穿过文字", "不使用装饰性仪表盘"]
+    },
+    {
+      "number": 7,
+      "title": "当场出牌与抓牌建议",
+      "role": "case study",
+      "intent": "已批准的代表性样稿",
+      "key_points": ["基于当前状态，而不是泛泛攻略", "出牌：动作、目标、预计掉血", "抓牌：Top-1 / Top-3 / 跳过", "依据：牌组协同、费用曲线、路线风险", "Solver 负责计算，LLM 负责解释"],
+      "layout": {"composition": "approved sample layout"},
+      "sample_approved": true,
+      "required_images": [
+        {"path": "assets/game_screenshots/01_deck.jpg", "role": "strict input asset; deck evidence", "fidelity": "preserve screenshot content exactly"},
+        {"path": "assets/game_screenshots/09_card_reward.jpg", "role": "strict input asset; card reward evidence", "fidelity": "preserve screenshot content exactly"}
+      ]
+    },
+    {
+      "number": 8,
+      "title": "自动执行与人工接管",
+      "role": "process",
+      "intent": "解释自动执行的控制与安全机制",
+      "key_points": ["solver 负责决策，执行层只接受本地枚举的合法动作", "每次执行前检查快照是否仍然有效", "支持开始、单步、暂停、继续和接管", "搜索超时或模型失败时回退到 beam、规则或停止解释"],
+      "layout": {"composition": "左侧大幅战斗截图，右侧用一条安全执行状态流，奶龙按下暂停按钮"},
+      "visual_elements": {"main_visual": "战斗复杂状态与简化控制流程"},
+      "required_images": [{"path": "assets/game_screenshots/04_combat_relics.jpg", "role": "strict input asset; complex combat-state evidence", "fidelity": "preserve cards, relics, numbers, UI, text and aspect ratio; do not redraw"}]
+    },
+    {
+      "number": 9,
+      "title": "情绪价值与语音陪伴",
+      "role": "experience design",
+      "intent": "说明人格、触发时机和语音队列",
+      "key_points": ["人格卡约束名字、语气、主动程度、吐槽等级与边界", "只在危险回合、奖励选择和复盘等关键节点发言", "先给有用信息，再给情绪反馈；吐槽决策，不攻击玩家", "字幕优先，TTS 按句播放并支持打断或静音"],
+      "layout": {"composition": "事件截图占左侧，右侧奶龙用一个短语音气泡说明陪伴原则"},
+      "visual_elements": {"main_visual": "事件对话场景与批准造型的奶龙"},
+      "required_images": [{"path": "assets/game_screenshots/10_event_relic.jpg", "role": "strict input asset; dialogue and reward-choice scenario", "fidelity": "preserve all game UI, reward text, numbers and image content; do not redraw"}]
+    },
+    {
+      "number": 10,
+      "title": "AI 作为第二个玩家",
+      "role": "case study",
+      "intent": "清楚展示AI双排的最终产品形态",
+      "key_points": ["本地双实例 co-op，人类与 AI 各自控制一个角色", "AI 只操作自己的角色，等待队友并参与地图投票", "支持集火、分工、药水与商店沟通", "关键工程问题：同步、actor、存档隔离与 Mod 兼容"],
+      "layout": {"composition": "双角色截图大幅居中，少量标注指出人类角色、AI角色和沟通层"},
+      "visual_elements": {"main_visual": "双角色同屏实战"},
+      "required_images": [{"path": "assets/game_screenshots/02_coop_commentary.jpg", "role": "strict input asset; direct evidence of two-character co-op and commentary", "fidelity": "preserve every visible UI and overlay element; do not redraw"}]
+    },
+    {
+      "number": 11,
+      "title": "让系统既“不蠢”又“像队友”",
+      "role": "technical summary",
+      "intent": "合并关键技术与创新点",
+      "key_points": ["搜索层：当前回合 exact、快速 beam、长程 rollout", "校验与回退：合法动作、快照新鲜度、超时降级和连续失败熔断", "战术与表达分离：solver 保证正确性，LLM 负责解释和人格", "协作创新：AI 以合法第二玩家身份参与", "模型兼容：OpenAI-compatible，并预留 DeepSeek 与本地模型适配"],
+      "layout": {"composition": "左右两条主轴：战术可靠与队友体验，在底部汇合为AI双排"},
+      "visual_elements": {"main_visual": "奶龙左手拿计算结果、右手拿语音气泡的3D隐喻"},
+      "constraints": ["技术名词大小写准确", "不要使用口号式空话"]
+    },
+    {
+      "number": 12,
+      "title": "项目基于现有开源能力组合实现",
+      "role": "feasibility",
+      "intent": "说明可复用资产与降级交付逻辑",
+      "key_points": ["STS2-Agent：双实例 co-op、overlay、HTTP API 与存档隔离", "Spire Buddy：游戏内聊天、人格和工具调用设计", "SpirePilot：exact、beam、rollout、状态 adapter 与评估脚本", "CombatSolver：强战斗基线与离线教师", "co-op 受阻时仍可交付观战搭子与战术建议"],
+      "layout": {"composition": "地图截图作为大幅背景证据，四条技术路线沿节点汇合，文字区保持清晰"},
+      "visual_elements": {"main_visual": "高层地图与技术路线汇合"},
+      "required_images": [{"path": "assets/game_screenshots/08_map_act3.jpg", "role": "strict input asset; route-convergence metaphor and evidence image", "fidelity": "preserve map nodes, legend, UI and all text; do not redraw"}]
+    },
+    {
+      "number": 13,
+      "title": "战术、体验与工程三类指标",
+      "role": "evaluation",
+      "intent": "给出可执行的评估框架而非虚构结果",
+      "key_points": ["战术：非法动作率、平均掉血、击杀判断准确率", "体验：建议有用度、队友感、烦扰度与信任度", "延迟：建议 1 至 2 秒内返回，语音首包目标 2 秒内", "工程：崩溃、软锁和存档损坏为 0", "方法：固定战斗状态与真实对局结合，并和规则、LLM及强 solver 基线比较"],
+      "layout": {"composition": "三条横向评估轨道，底部放方法说明，不画虚构图表"},
+      "visual_elements": {"main_visual": "奶龙拿着检查表，三条指标轨道使用不同强调色"},
+      "constraints": ["不得生成虚构实验数据或柱状图", "目标值和单位准确"]
+    },
+    {
+      "number": 14,
+      "title": "8 周分阶段交付",
+      "role": "timeline",
+      "intent": "合并计划、分工与关键风险",
+      "key_points": ["W1-W2：环境验证、状态读取与模型连通", "W3-W4：建议面板、exact/beam 与抓牌建议", "W5-W6：人格、字幕、TTS 与自动执行", "W7-W8：第二角色、协作、评估与答辩", "五人按接入、战术、模型、交互、测试分工；版本锁定、降级模式和存档隔离控制高风险"],
+      "layout": {"composition": "地图截图弱化为路线背景，四个阶段沿8周路线前进，底部只保留三项关键风险"},
+      "visual_elements": {"main_visual": "地图路线式8周时间线，奶龙沿路径前进"},
+      "required_images": [{"path": "assets/game_screenshots/05_map_act1.jpg", "role": "strict input asset reused as roadmap background", "fidelity": "preserve map nodes, legend and UI; do not redraw; may reduce contrast uniformly without altering content"}]
+    },
+    {
+      "number": 15,
+      "title": "可演示、可评估、可复现的 AI 双排原型",
+      "role": "summary",
+      "intent": "总结预期成果并进入答疑",
+      "key_points": ["可运行的观战搭子，争取完成 AI 第二角色 co-op", "战斗与抓牌建议，附带可解释理由与人工接管", "中文人格、字幕与语音陪伴", "代码、测试、评估报告、演示视频与项目文档", "Solver 保证战术可靠，LLM 负责队友表达，co-op 提供共同游玩"],
+      "layout": {"composition": "事件奖励截图作为右侧成果隐喻，左侧四项交付物与简短谢谢答疑"},
+      "visual_elements": {"main_visual": "奖励选择场景和批准造型的奶龙"},
+      "required_images": [{"path": "assets/game_screenshots/03_event_reward.jpg", "role": "strict input asset; closing visual and deliverable metaphor", "fidelity": "preserve all game UI, Chinese text and reward entries; do not redraw"}]
+    }
+  ]
+}

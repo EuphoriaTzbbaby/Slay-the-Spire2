@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "kind": "response",
+  "id": "req-001",
+  "ok": true,
+  "result": {
+    "accepted": true
+  }
+}

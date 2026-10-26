@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "kind": "response",
+  "id": "req-002",
+  "ok": false,
+  "error": {
+    "code": "MODEL_NOT_READY",
+    "message": "模型尚未就绪",
+    "retryable": true
+  }
+}

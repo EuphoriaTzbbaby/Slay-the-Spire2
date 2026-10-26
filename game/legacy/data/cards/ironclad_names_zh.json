@@ -1,0 +1,354 @@
+{
+  "schema_version": "0.1",
+  "source": "Spire Codex API ?lang=zhs (Chinese card names), accessed 2026-10-22",
+  "cards": [
+    {
+      "card_id": "UPPERCUT",
+      "name_zh": "上勾拳"
+    },
+    {
+      "card_id": "FIGHT_ME",
+      "name_zh": "与我一战！"
+    },
+    {
+      "card_id": "DOMINATE",
+      "name_zh": "主宰"
+    },
+    {
+      "card_id": "CINDER",
+      "name_zh": "余烬"
+    },
+    {
+      "card_id": "CASCADE",
+      "name_zh": "倾泻"
+    },
+    {
+      "card_id": "BODY_SLAM",
+      "name_zh": "全身撞击"
+    },
+    {
+      "card_id": "MANGLE",
+      "name_zh": "凌虐"
+    },
+    {
+      "card_id": "VICIOUS",
+      "name_zh": "凶恶"
+    },
+    {
+      "card_id": "POMMEL_STRIKE",
+      "name_zh": "剑柄打击"
+    },
+    {
+      "card_id": "PILLAGE",
+      "name_zh": "劫掠"
+    },
+    {
+      "card_id": "JUGGERNAUT",
+      "name_zh": "势不可当"
+    },
+    {
+      "card_id": "PRIMAL_FORCE",
+      "name_zh": "原始力量"
+    },
+    {
+      "card_id": "TWIN_STRIKE",
+      "name_zh": "双重打击"
+    },
+    {
+      "card_id": "INFERNAL_BLADE",
+      "name_zh": "地狱之刃"
+    },
+    {
+      "card_id": "HELLRAISER",
+      "name_zh": "地狱狂徒"
+    },
+    {
+      "card_id": "UNMOVABLE",
+      "name_zh": "坚定不移"
+    },
+    {
+      "card_id": "TRUE_GRIT",
+      "name_zh": "坚毅"
+    },
+    {
+      "card_id": "BARRICADE",
+      "name_zh": "壁垒"
+    },
+    {
+      "card_id": "HEADBUTT",
+      "name_zh": "头槌"
+    },
+    {
+      "card_id": "PACTS_END",
+      "name_zh": "契约终结"
+    },
+    {
+      "card_id": "AGGRESSION",
+      "name_zh": "好勇斗狠"
+    },
+    {
+      "card_id": "PERFECTED_STRIKE",
+      "name_zh": "完美打击"
+    },
+    {
+      "card_id": "STONE_ARMOR",
+      "name_zh": "岩石铠甲"
+    },
+    {
+      "card_id": "IMPERVIOUS",
+      "name_zh": "岿然不动"
+    },
+    {
+      "card_id": "COLOSSUS",
+      "name_zh": "巨像"
+    },
+    {
+      "card_id": "HOWL_FROM_BEYOND",
+      "name_zh": "彼岸咆哮"
+    },
+    {
+      "card_id": "HEMOKINESIS",
+      "name_zh": "御血术"
+    },
+    {
+      "card_id": "SPITE",
+      "name_zh": "怨恨"
+    },
+    {
+      "card_id": "FIEND_FIRE",
+      "name_zh": "恶魔之焰"
+    },
+    {
+      "card_id": "DEMON_FORM",
+      "name_zh": "恶魔形态"
+    },
+    {
+      "card_id": "DEMONIC_SHIELD",
+      "name_zh": "恶魔护盾"
+    },
+    {
+      "card_id": "STAMPEDE",
+      "name_zh": "惊逃"
+    },
+    {
+      "card_id": "ANGER",
+      "name_zh": "愤怒"
+    },
+    {
+      "card_id": "BATTLE_TRANCE",
+      "name_zh": "战斗专注"
+    },
+    {
+      "card_id": "TREMBLE",
+      "name_zh": "战栗"
+    },
+    {
+      "card_id": "DRUM_OF_BATTLE",
+      "name_zh": "战鼓"
+    },
+    {
+      "card_id": "STRIKE_IRONCLAD",
+      "name_zh": "打击"
+    },
+    {
+      "card_id": "TEAR_ASUNDER",
+      "name_zh": "扯碎"
+    },
+    {
+      "card_id": "DISMANTLE",
+      "name_zh": "拆卸"
+    },
+    {
+      "card_id": "TAUNT",
+      "name_zh": "挑衅"
+    },
+    {
+      "card_id": "RUPTURE",
+      "name_zh": "撕裂"
+    },
+    {
+      "card_id": "BLOODLETTING",
+      "name_zh": "放血"
+    },
+    {
+      "card_id": "WHIRLWIND",
+      "name_zh": "旋风斩"
+    },
+    {
+      "card_id": "UNRELENTING",
+      "name_zh": "无情猛攻"
+    },
+    {
+      "card_id": "FEEL_NO_PAIN",
+      "name_zh": "无惧疼痛"
+    },
+    {
+      "card_id": "NOT_YET",
+      "name_zh": "时候未到"
+    },
+    {
+      "card_id": "RAMPAGE",
+      "name_zh": "暴走"
+    },
+    {
+      "card_id": "JUGGLING",
+      "name_zh": "杂耍"
+    },
+    {
+      "card_id": "BULLY",
+      "name_zh": "欺凌"
+    },
+    {
+      "card_id": "ARMAMENTS",
+      "name_zh": "武装"
+    },
+    {
+      "card_id": "CRUELTY",
+      "name_zh": "残酷"
+    },
+    {
+      "card_id": "STOKE",
+      "name_zh": "添柴"
+    },
+    {
+      "card_id": "FLAME_BARRIER",
+      "name_zh": "火焰屏障"
+    },
+    {
+      "card_id": "ASHEN_STRIKE",
+      "name_zh": "灰烬打击"
+    },
+    {
+      "card_id": "BRAND",
+      "name_zh": "烙印"
+    },
+    {
+      "card_id": "CONFLAGRATION",
+      "name_zh": "焚烧"
+    },
+    {
+      "card_id": "MOLTEN_FIST",
+      "name_zh": "熔融之拳"
+    },
+    {
+      "card_id": "INFLAME",
+      "name_zh": "燃烧"
+    },
+    {
+      "card_id": "BURNING_PACT",
+      "name_zh": "燃烧契约"
+    },
+    {
+      "card_id": "FEED",
+      "name_zh": "狂宴"
+    },
+    {
+      "card_id": "RAGE",
+      "name_zh": "狂怒"
+    },
+    {
+      "card_id": "INFERNO",
+      "name_zh": "狱火"
+    },
+    {
+      "card_id": "BASH",
+      "name_zh": "痛击"
+    },
+    {
+      "card_id": "THRASH",
+      "name_zh": "痛殴"
+    },
+    {
+      "card_id": "BREAK",
+      "name_zh": "破击"
+    },
+    {
+      "card_id": "HAVOC",
+      "name_zh": "破灭"
+    },
+    {
+      "card_id": "OFFERING",
+      "name_zh": "祭品"
+    },
+    {
+      "card_id": "BREAKTHROUGH",
+      "name_zh": "突破"
+    },
+    {
+      "card_id": "CRIMSON_MANTLE",
+      "name_zh": "绯红披风"
+    },
+    {
+      "card_id": "SHRUG_IT_OFF",
+      "name_zh": "耸肩无视"
+    },
+    {
+      "card_id": "TANK",
+      "name_zh": "肉盾"
+    },
+    {
+      "card_id": "CORRUPTION",
+      "name_zh": "腐化"
+    },
+    {
+      "card_id": "PYRE",
+      "name_zh": "薪火之源"
+    },
+    {
+      "card_id": "BLOOD_WALL",
+      "name_zh": "血墙"
+    },
+    {
+      "card_id": "FORGOTTEN_RITUAL",
+      "name_zh": "被遗忘的仪式"
+    },
+    {
+      "card_id": "EXPECT_A_FIGHT",
+      "name_zh": "跃跃欲试"
+    },
+    {
+      "card_id": "STOMP",
+      "name_zh": "踩踏"
+    },
+    {
+      "card_id": "ONE_TWO_PUNCH",
+      "name_zh": "连环拳"
+    },
+    {
+      "card_id": "EVIL_EYE",
+      "name_zh": "邪眼"
+    },
+    {
+      "card_id": "SECOND_WIND",
+      "name_zh": "重振精神"
+    },
+    {
+      "card_id": "BLUDGEON",
+      "name_zh": "重锤"
+    },
+    {
+      "card_id": "IRON_WAVE",
+      "name_zh": "铁斩波"
+    },
+    {
+      "card_id": "THUNDERCLAP",
+      "name_zh": "闪电霹雳"
+    },
+    {
+      "card_id": "DEFEND_IRONCLAD",
+      "name_zh": "防御"
+    },
+    {
+      "card_id": "SETUP_STRIKE",
+      "name_zh": "预备打击"
+    },
+    {
+      "card_id": "SWORD_BOOMERANG",
+      "name_zh": "飞剑回旋镖"
+    },
+    {
+      "card_id": "DARK_EMBRACE",
+      "name_zh": "黑暗之拥"
+    }
+  ]
+}

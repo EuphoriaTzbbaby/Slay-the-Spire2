@@ -1,0 +1,7 @@
+{
+  "slide": 5,
+  "task": "edit_existing_slide_image",
+  "input": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/origin_image/slide_05.png",
+  "output_candidate": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/revision_candidates/slide_05.png",
+  "prompt": "保持原图奶龙视觉系统与三条彩色路线汇合的构图，重做为开题调研证据页。标题改为：项目调研：三类方案各有优势。三条路线分别写：Spire Buddy｜强陪伴：游戏内聊天、人格、工具调用；STS2-Agent｜强联机：双实例 co-op、overlay、HTTP API；CombatSolver｜强战术：搜索精度高，但在线响应较慢。右侧结论框标题：调研结论；内容：现有方案尚未同时覆盖强战术、自然表达、语音陪伴与双排协作。保留圆润黄色奶龙。所有中文必须准确清晰，不要页码、水印或额外文字。"
+}

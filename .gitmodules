@@ -1,0 +1,11 @@
+[submodule "spire-buddy"]
+	path = game/spire-buddy
+	url = https://github.com/xzmzm/spire-buddy
+
+[submodule "STS2-Agent"]
+	path = game/STS2-Agent
+	url = https://github.com/CharTyr/STS2-Agent
+
+[submodule "CombatSolver"]
+	path = game/CombatSolver
+	url = https://github.com/Torch1230/CombatSolver

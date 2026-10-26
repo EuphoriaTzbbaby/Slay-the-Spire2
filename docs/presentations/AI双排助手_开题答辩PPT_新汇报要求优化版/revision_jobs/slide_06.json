@@ -1,0 +1,7 @@
+{
+  "slide": 6,
+  "task": "edit_existing_slide_image",
+  "input": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/origin_image/slide_06.png",
+  "output_candidate": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/revision_candidates/slide_06.png",
+  "prompt": "严格保持原图奶油黄、浅橙、米白、圆润奶龙与环形关系图构图，重做为调研结论到项目方案的承接页。标题改为：调研结论：三种能力需要组合。保留三个核心节点并准确写成：战术脑｜搜索、模拟、数值判断；表达脑｜人格、解释、复盘与语音；游戏身体｜读取状态、执行合法动作、进入 co-op。底部安全层写：快照校验、预算、暂停与人工接管。中心奶龙代表 AI 队友。增加一句短结论：各模块分工明确，避免让 LLM 猜数值或直接操作游戏。所有中文清晰准确，不加页码、水印。"
+}

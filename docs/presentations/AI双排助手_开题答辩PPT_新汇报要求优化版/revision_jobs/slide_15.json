@@ -1,0 +1,7 @@
+{
+  "slide": 15,
+  "task": "edit_existing_slide_image",
+  "input": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/origin_image/slide_15.png",
+  "output_candidate": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/revision_candidates/slide_15.png",
+  "prompt": "保持原图奶龙风、游戏地图背景和 8 周路线图视觉，优化为计划与团队协作页。标题改为：8 周计划与团队协作。路线图四阶段准确写：W1–W2 环境验证、状态读取、模型连通；W3–W4 建议面板、exact/beam、抓牌建议；W5–W6 人格、字幕、TTS、自动执行；W7–W8 第二角色、协作、评估与答辩。底部加入五人协作信息：接入、战术、模型、交互、测试五类负责人；用 Git issue、commit、PR 与周报追溯个人贡献。风险控制写：版本锁定、降级模式、存档隔离。中文必须准确、清晰，信息层级明确，不加页码、水印。"
+}

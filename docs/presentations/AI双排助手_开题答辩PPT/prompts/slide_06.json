@@ -1,0 +1,43 @@
+{
+  "slide": 6,
+  "title": "混合架构与数据流",
+  "prompt": "# Codex PPT Slide Image Prompt\n\n## Canvas\n{\n  \"type\": \"16:9 full-slide PowerPoint image\",\n  \"language\": \"Chinese\",\n  \"slide_number\": 6,\n  \"render_slide_number\": false\n}\n\n## Deck Goal\n用约15页清晰说明《杀戮尖塔2》AI双排助手的研究问题、方案、功能、技术路线、可行性、评估与计划。\n\n## Required Background\n{\n  \"deck_context\": {\n    \"source_summary\": \"项目面向《杀戮尖塔2》的复杂卡牌构筑与双人协作场景，组合战斗搜索、LLM人格表达、语音陪伴和双实例co-op，形成能建议、能自动执行并能作为第二玩家协作的AI搭子。\",\n    \"core_claim\": \"solver保证战术可靠，LLM负责队友表达，co-op提供共同游玩。\",\n    \"canonical_terms\": [\n      \"AI 双排助手\",\n      \"战术脑\",\n      \"表达脑\",\n      \"游戏身体\",\n      \"合法动作校验\",\n      \"人工接管\"\n    ],\n    \"mascot_reference\": \"奶龙造型必须沿用已批准样稿：圆胖软糯的3D黄橙色身体、绿色大眼、米白肚皮、短圆手臂、无翅膀、无角、无尖刺、极简表情。\"\n  }\n}\n\n## Global Style\n{\n  \"name\": \"奶龙风开题答辩\",\n  \"visual_direction\": \"soft rounded 3D toy-like presentation design with the approved milk-dragon mascot, cheerful but academically clear\",\n  \"color_palette\": \"cream #FFF7E6, pastel yellow #FFD76A, light orange #FFAD5A, warm brown #6B4B35, small mint accent #8FD3B6\",\n  \"typography\": \"large bold rounded Chinese sans-serif titles, clean readable Chinese sans-serif body, strong hierarchy and generous spacing\",\n  \"texture_and_finish\": \"soft 3D clouds and stars, rounded surfaces, restrained warm shadows, no dark full-slide backgrounds\",\n  \"deck_consistency\": \"match the approved sample palette, typography mood, mascot anatomy, rounded 3D finish and information density; vary layout by slide role\"\n}\n\n## Input Images\n\n- Image 1: /Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png — approved sample slide style reference; match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content\n\n\n## Slide\n{\n  \"number\": 6,\n  \"title\": \"混合架构与数据流\",\n  \"role\": \"architecture\",\n  \"intent\": \"说明从游戏状态到建议、语音和动作执行的完整链路\"\n}\n\n## Text\n{\n  \"title\": \"混合架构与数据流\",\n  \"key_points\": [\n    \"游戏状态经 adapter 转为统一快照\",\n    \"exact、beam 与 rollout 生成候选动作和战损预测\",\n    \"LLM 读取结构化结果，生成人格化解释\",\n    \"合法动作校验后由 overlay 或 co-op 实例执行\",\n    \"TTS 以可打断队列输出语音\"\n  ],\n  \"speaker_focus\": null\n}\n\n## Layout\n{\n  \"composition\": \"从左到右的五段数据流，连接线保持水平或垂直，奶龙在表达脑节点旁\"\n}\n\n## Visual Elements\n{\n  \"main_visual\": \"可读的技术流程图，强调LLM不直接计算和不直接操作游戏对象\"\n}\n\n## Constraints\n[\n  \"所有节点文字准确\",\n  \"连接线不得穿过文字\",\n  \"不使用装饰性仪表盘\"\n]\n\n## Style Reference Rule\nUse Image 1 as the approved sample-slide style reference. Match its palette, typography mood, density, texture, and overall visual identity. Do not copy its exact layout unless this slide's layout explicitly asks for it.\n\n## Input Image Handling Rules\nFor any input image marked as a strict input asset, include it visibly and preserve its content. Do not redraw, replace, relabel, or invent a similar figure. Scale and crop only as needed for composition while keeping the important labels, arrows, data, and relationships recognizable.\n\n## Universal Constraints\n- The final image itself must contain the title and key points.\n- Render Chinese text exactly and legibly; avoid garbled characters.\n- Keep the confirmed deck style consistent while varying layout by slide role.\n- No watermark, unrelated logo, or extra slide number.\n",
+  "out": "slide_06.png",
+  "input_images": [
+    {
+      "path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+      "role": "approved sample slide style reference",
+      "fidelity": "match style, mascot appearance, typography mood, color palette and density only; do not copy its exact layout or content"
+    }
+  ],
+  "requires_context_images": true,
+  "expected_backend": "built-in image tool",
+  "sample_generation_method": {
+    "backend_used": "built-in image tool",
+    "tool_name": "image_gen",
+    "mode": "generate",
+    "prompt_source": "approved Slide 7 sample prompt and one mascot-correction edit",
+    "size": "built-in default 16:9 landscape",
+    "quality": "built-in default",
+    "model_config": "built-in default; exact model not exposed",
+    "approved_sample_path": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT/origin_image/slide_07.png",
+    "input_context_preparation": "local required images inspected with view_image; referenced_image_paths supplied to built-in image_gen",
+    "handoff_rule": "Subagents must use the same built-in image_gen tool in generate mode and return a blocker if unavailable."
+  },
+  "generation_contract": {
+    "must_use_selected_image_backend": true,
+    "must_match_sample_generation_method": true,
+    "forbidden_final_image_methods": [
+      "local drawing/rendering scripts",
+      "Pillow-generated slides",
+      "SVG/HTML/CSS/canvas screenshots",
+      "python-pptx/PptxGenJS/native PPT layout screenshots",
+      "manually composited text/image overlays"
+    ],
+    "must_return": [
+      "backend_used",
+      "selected_source",
+      "qa_note"
+    ]
+  }
+}
