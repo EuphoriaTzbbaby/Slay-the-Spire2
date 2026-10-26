@@ -1,0 +1,7 @@
+{
+  "slide": 3,
+  "task": "edit_existing_slide_image",
+  "input": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/origin_image/slide_03.png",
+  "output_candidate": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/revision_candidates/slide_03.png",
+  "prompt": "在严格保持原图奶油黄、浅橙、米白、圆润奶龙、游戏截图和整体布局风格的前提下，重做这一页，使它更符合开题展示的调研动机。标题改为：选题动机：连续决策适合检验 AI。副标题：游戏机制天然覆盖感知、规划、执行与协作。保留左侧地图截图与右侧战斗截图。底部用四个简洁标签准确呈现：状态感知（手牌、敌人意图、遗物）、短期规划（能量与出牌顺序）、长期规划（路线与牌组构筑）、多人协作（同步、分工与沟通）。必须准确渲染全部中文；不要添加页码、水印或无关文字。"
+}

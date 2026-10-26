@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "kind": "request",
+  "id": "req-001",
+  "method": "speech.enqueue",
+  "params": {
+    "utterance_id": "utt-001",
+    "text": "到你了。",
+    "priority": "normal",
+    "ttl_ms": 10000
+  }
+}

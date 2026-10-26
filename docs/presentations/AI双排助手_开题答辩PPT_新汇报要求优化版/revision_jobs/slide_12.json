@@ -1,0 +1,7 @@
+{
+  "slide": 12,
+  "task": "edit_existing_slide_image",
+  "input": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/origin_image/slide_12.png",
+  "output_candidate": "/Users/cwwdka/Desktop/Slay the Sprie 2/AI双排助手_开题答辩PPT_新汇报要求优化版/revision_candidates/slide_12.png",
+  "prompt": "保持原图奶龙风、左右双栏与中间奶龙构图，重做为明确的项目特色与创新点页。标题改为：项目特色与创新点。左栏标题：战术可靠；两点：1. 分层搜索：exact、beam、rollout 按预算切换。2. 双重校验：合法动作与快照新鲜度。右栏标题：队友体验；三点：3. 战术与表达分离：solver 计算，LLM 解释。4. AI 以合法第二玩家身份参与 co-op。5. 模型兼容：OpenAI-compatible，并预留本地模型。底部强调语：把强战术、可解释表达与双排协作放进同一原型。所有中文准确清晰，不添加页码、水印。"
+}
