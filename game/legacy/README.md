@@ -13,9 +13,12 @@ C# / .NET 9 单人 Mod 的正式开发目录。第一批实现状态查看、控
 从仓库根目录执行：
 
 ```bash
+python scripts/game_dev.py run     # 构建 → 安装 → 启动游戏（macOS）
 python scripts/game_dev.py build
 python scripts/game_dev.py check
 ```
+
+改完代码后用 `run` 一条命令即可；`--no-launch` 只构建安装、不启动。C# 代码只能在游戏启动时加载，改代码必须重启游戏，没有热重载；降低摩擦的做法见 [待办：AI 局势感知与开发迭代](../../docs/待办-AI局势感知与开发迭代.md)。
 
 macOS 自动检测标准 Steam 游戏数据路径。Windows 构建需指定游戏数据目录，或复制 local.props.example 为 local.props 并修改：
 

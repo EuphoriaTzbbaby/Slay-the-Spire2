@@ -4,7 +4,7 @@
 
 - check_repository.py：检查目录、子模块映射、JSON 文件与消息公共字段，不访问网络或游戏。
 
-- game_dev.py：build 编译主工程，check 运行独立控制检查，install 将已构建模块安装到指定游戏目录，不启动游戏或写入存档。
+- game_dev.py：build 编译主工程，check 运行独立控制检查，install 将已构建模块安装到指定游戏目录；run 串起构建、安装并启动游戏（macOS，可用 --no-launch 跳过启动）。除 run 外不启动游戏，任何动作都不写入存档。
 
 启动、打包和联调脚本统一放在本目录，旧 Python 原型测试入口已移除。
 
