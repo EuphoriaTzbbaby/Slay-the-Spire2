@@ -12,6 +12,7 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
 namespace SpireCompanion;
@@ -58,6 +59,7 @@ internal static class GameReader
             Relics = player.Relics.Select((r, i) => new ItemView(i, r.Id.Entry, Text(r.Title))).ToArray(),
             Potions = player.PotionSlots.Select((p, i) => p == null ? null : new ItemView(i, p.Id.Entry, Text(p.Title)))
                 .OfType<ItemView>().ToArray(),
+            Room = ReadRoom(run.CurrentRoom),
             Enemies = state?.Enemies.Select((e, i) => new EnemyView(i, e.Monster?.Id.Entry ?? "unknown",
                 e.Monster != null ? Text(e.Monster.Title) : "未知敌人", e.CurrentHp, e.MaxHp, e.Block)).ToArray() ?? []
         };
@@ -71,6 +73,23 @@ internal static class GameReader
         var run = RunManager.Instance.DebugOnlyGetState()!;
         Player player = LocalContext.GetMe(run) ?? throw new InvalidOperationException("本地角色已失效");
         PlayerCmd.EndTurn(player, canBackOut: false);
+    }
+
+    /// <summary>
+    /// Event options are the one out-of-combat choice the game exposes as a plain model list,
+    /// so they can be read without scraping UI text. Other screens stay unknown on purpose.
+    /// </summary>
+    private static RoomView? ReadRoom(AbstractRoom? room)
+    {
+        if (room is not EventRoom eventRoom) return null;
+        EventModel? model = null;
+        try { model = eventRoom.LocalMutableEvent; }
+        catch (Exception error) { Godot.GD.PushWarning($"[SpireCompanion] event_state: {error.Message}"); }
+        model ??= eventRoom.CanonicalEvent;
+        if (model == null) return new RoomView("Event", "事件（内容未就绪）", "", []);
+        var options = model.CurrentOptions?.Select((option, index) => new RoomOptionView(
+            index.ToString(), Text(option.Title), Text(option.Description), option.IsLocked)).ToArray() ?? [];
+        return new RoomView("Event", Text(model.Title), Text(model.Description), options);
     }
 
     private static CardView Card(CardModel card, int index, bool inHand) => new(index, card.Id.Entry, Text(card.Title),
