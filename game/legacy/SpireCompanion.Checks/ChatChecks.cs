@@ -115,6 +115,24 @@ internal static class ChatChecks
             finally {File.Delete(path);}
             return Task.CompletedTask;
         });
+        await Check("Content parts and reasoning-only replies are handled", async () =>
+        {
+            using var parts = new ChatClient(new Handler((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"choices\":[{\"message\":{\"content\":[{\"text\":\"先看\"},{\"text\":\"防御\"}]}}]}")
+            })));
+            Require(await parts.AskAsync(settings, "k", "问", snapshot, [], default) == "先看防御");
+            using var thinking = new ChatClient(new Handler((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"choices\":[{\"message\":{\"content\":\"\",\"reasoning_content\":\"想了很久\"},\"finish_reason\":\"length\"}]}")
+            })));
+            try
+            {
+                await thinking.AskAsync(settings, "k", "问", snapshot, [], default);
+                throw new Exception("Expected reasoning-only reply to be rejected");
+            }
+            catch (ModelReplyException error) { Require(error.Message.Contains("推理内容")); }
+        });
         await Check("Markdown replies become BBCode and raw brackets are escaped", () =>
         {
             var text = ChatMarkdown.ToBbcode("**结论**：先防御。\n- 打 `打击`\n# 标题\n[链接](https://example.com)\n```\ncode\n```\n数值 [2]");

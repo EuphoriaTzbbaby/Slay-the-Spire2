@@ -93,6 +93,7 @@ internal static class UiStyle
         theme.SetColor("font_color", "Button", Text);
         theme.SetColor("font_hover_color", "Button", Text);
         theme.SetColor("font_pressed_color", "Button", Colors.White);
+        theme.SetColor("font_focus_color", "Button", Text);
         theme.SetColor("font_disabled_color", "Button", Muted);
 
         theme.SetStylebox("tab_selected", "TabBar", Box(Accent, AccentDeep, 10, 10));

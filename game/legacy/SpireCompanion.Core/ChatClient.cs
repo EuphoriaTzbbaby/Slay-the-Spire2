@@ -72,10 +72,22 @@ public sealed class ChatClient : IDisposable
             }
             using var json = JsonDocument.Parse(body.ToArray());
             if (!json.RootElement.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0
-                || !choices[0].TryGetProperty("message", out var message) || !message.TryGetProperty("content", out var content)
-                || content.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(content.GetString()))
-                throw new ModelReplyException("模型没有返回可显示的文字，请检查服务是否支持 Chat Completions。");
-            var text = content.GetString()!;
+                || !choices[0].TryGetProperty("message", out var message))
+                throw new ModelReplyException("模型返回的数据缺少 choices 或 message，请检查服务是否兼容 Chat Completions。");
+            var text = MessageText(message);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                // Reasoning models can spend the whole output budget before writing an answer.
+                var reasoning = message.TryGetProperty("reasoning_content", out var thinking) && thinking.ValueKind == JsonValueKind.String
+                    ? thinking.GetString() : null;
+                var finish = choices[0].TryGetProperty("finish_reason", out var reason) && reason.ValueKind == JsonValueKind.String
+                    ? reason.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(reasoning))
+                    throw new ModelReplyException("模型只返回了推理内容、没有正文。请改用非推理模型（如 deepseek-chat / deepseek-flash），或把最大输出调大后重试。");
+                if (finish == "length")
+                    throw new ModelReplyException("回复被输出长度上限截断，请缩短问题或换用支持更长输出的模型。");
+                throw new ModelReplyException("模型返回了空正文，请检查服务与模型是否支持 Chat Completions。");
+            }
             if (text.Length > 12_000) throw new ModelReplyException("模型文字过长，请缩短问题后重试。");
             return text;
         }
@@ -84,5 +96,21 @@ public sealed class ChatClient : IDisposable
         catch (JsonException) { throw new ModelReplyException("模型返回的 JSON 格式无效。"); }
         catch (HttpRequestException) { throw new ModelReplyException("无法连接模型服务，请检查网络和地址。"); }
     }
+    /// <summary>Some compatible providers return content as a string, others as typed parts.</summary>
+    private static string? MessageText(JsonElement message)
+    {
+        if (!message.TryGetProperty("content", out var content)) return null;
+        if (content.ValueKind == JsonValueKind.String) return content.GetString();
+        if (content.ValueKind != JsonValueKind.Array) return null;
+        var builder = new StringBuilder();
+        foreach (var part in content.EnumerateArray())
+        {
+            if (part.ValueKind == JsonValueKind.String) builder.Append(part.GetString());
+            else if (part.ValueKind == JsonValueKind.Object && part.TryGetProperty("text", out var text) && text.ValueKind == JsonValueKind.String)
+                builder.Append(text.GetString());
+        }
+        return builder.ToString();
+    }
+
     public void Dispose() => http.Dispose();
 }
