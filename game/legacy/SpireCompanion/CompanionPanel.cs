@@ -21,6 +21,8 @@ internal sealed class CompanionPanel
     private bool dragging;
     private Vector2 dragOffset;
     private Button endTurn = null!;
+    private Button pause = null!;
+    private Button resume = null!;
     private Button toggle = null!;
     private GameSnapshot? shown;
     private Button solverStart = null!;
@@ -85,11 +87,11 @@ internal sealed class CompanionPanel
         status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(0, 80) };
         statusCard.AddChild(status);
         var controlCard = UiStyle.Card(body, "手动控制");
-        var pause = new Button { Text = "暂停所有本模块动作" };
+        pause = new Button { Text = "暂停所有本模块动作" };
         pause.Pressed += PauseAll;
         UiStyle.Secondary(pause); UiStyle.Size(pause, 44);
         controlCard.AddChild(pause);
-        var resume = new Button { Text = "启用本模块手动操作（非自动托管）" };
+        resume = new Button { Text = "启用手动操作" };
         resume.Pressed += () => { gate.Resume(); message = "已启用手动操作，仍需点击动作按钮。"; Refresh(); };
         UiStyle.Secondary(resume); UiStyle.Size(resume, 44);
         controlCard.AddChild(resume);
@@ -262,17 +264,15 @@ internal sealed class CompanionPanel
             SolverBridge.ObserveLifecycle();
             var next = GameReader.Read();
             var solver = SolverBridge.Status();
-            // While enabled, any unowned state change invalidates outstanding work.
-            if (!SolverBridge.Owned && !gate.Paused && shown != null && next.Fingerprint != shown.Fingerprint)
-            {
-                gate.Pause();
-                message = "状态已变化，已暂停；检查后可重新启用手动操作。";
-            }
+            // Ending a turn changes the state on purpose, so manual mode stays enabled;
+            // stale or duplicate submissions are already rejected by the gate's fingerprint check.
             shown = next;
             stateLabel.Text = SolverBridge.Owned ? "求解器接管" : gate.Paused ? "暂停" : "就绪";
             stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : gate.Paused ? UiStyle.Muted : UiStyle.Good);
             status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n{(next.CanEndTurn ? "可以手动结束回合" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
             endTurn.Disabled = gate.Paused || !next.CanEndTurn;
+            resume.Disabled = !gate.Paused;
+            resume.Text = gate.Paused ? "启用手动操作" : "手动操作已启用";
             solverStart.Disabled = !solver.Available || solver.FullAuto || solver.Deploying || SolverBridge.Owned || !SolverBridge.CanStart;
             if (!reportedReady)
             {
