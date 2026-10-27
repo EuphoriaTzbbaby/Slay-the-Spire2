@@ -26,7 +26,7 @@ macOS 自动检测标准 Steam 游戏数据路径。Windows 构建需指定游�
 python scripts/game_dev.py build --game-data "C:/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64"
 ```
 
-本机路径和游戏程序集不提交。Windows 编译和运行尚待该平台验证。
+本机路径和游戏程序集不提交。Windows 的构建、安装与验收现象见 [Windows 加载 Mod 指南](../../docs/Windows-加载Mod指南.md)。
 
 ## 安装与手动验收
 

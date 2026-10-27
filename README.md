@@ -62,6 +62,7 @@ python scripts/game_dev.py check
 - [GitHub 团队协作](docs/GitHub团队协作与主分支保护.md)
 - [Github代码提交指南](docs/Github代码提交指南.md)：创建分支、保存提交、上传代码及 PR 流程（以语音模块为例）。
 - [游戏内窗口与 API 手动验证](docs/游戏内窗口与API手动验证.md)：加载 Mod、测试密钥和文字聊天。
+- [Windows 加载 Mod 指南](docs/Windows-加载Mod指南.md)：给 Windows 队友的构建、安装、验收现象与问题回传清单。
 - [待办：AI 局势感知与开发迭代](docs/待办-AI局势感知与开发迭代.md)：各界面快照、提示词、卡牌文本查询，以及改代码必须重启的应对方案。
 - [文字聊天使用与开发记录](docs/游戏模块文字聊天开发记录.md)
 - [游戏开发入口](game/README.md)
