@@ -12,6 +12,11 @@ using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Entities.RestSite;
+using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -59,7 +64,7 @@ internal static class GameReader
             Relics = player.Relics.Select((r, i) => new ItemView(i, r.Id.Entry, Text(r.Title))).ToArray(),
             Potions = player.PotionSlots.Select((p, i) => p == null ? null : new ItemView(i, p.Id.Entry, Text(p.Title)))
                 .OfType<ItemView>().ToArray(),
-            Room = ReadRoom(run.CurrentRoom),
+            Room = ReadRoom(run),
             Enemies = state?.Enemies.Select((e, i) => new EnemyView(i, e.Monster?.Id.Entry ?? "unknown",
                 e.Monster != null ? Text(e.Monster.Title) : "未知敌人", e.CurrentHp, e.MaxHp, e.Block)).ToArray() ?? []
         };
@@ -76,20 +81,88 @@ internal static class GameReader
     }
 
     /// <summary>
-    /// Event options are the one out-of-combat choice the game exposes as a plain model list,
-    /// so they can be read without scraping UI text. Other screens stay unknown on purpose.
+    /// Out-of-combat screens. Event, shop and rest site expose plain model lists, so they can be
+    /// read without touching UI text; the card reward and map are the two exceptions noted below.
     /// </summary>
-    private static RoomView? ReadRoom(AbstractRoom? room)
+    private static RoomView? ReadRoom(RunState run)
     {
-        if (room is not EventRoom eventRoom) return null;
-        EventModel? model = null;
-        try { model = eventRoom.LocalMutableEvent; }
-        catch (Exception error) { Godot.GD.PushWarning($"[SpireCompanion] event_state: {error.Message}"); }
-        model ??= eventRoom.CanonicalEvent;
-        if (model == null) return new RoomView("Event", "事件（内容未就绪）", "", []);
-        var options = model.CurrentOptions?.Select((option, index) => new RoomOptionView(
-            index.ToString(), Text(option.Title), Text(option.Description), option.IsLocked)).ToArray() ?? [];
-        return new RoomView("Event", Text(model.Title), Text(model.Description), options);
+        if (NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen rewardScreen)
+        {
+            var cards = CardHolders(rewardScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
+            if (cards.Length > 0)
+                return new RoomView("Reward", "卡牌奖励", "选择一张加入牌组，或跳过",
+                    cards.Select((card, index) => new RoomOptionView(index.ToString(), Text(card.Title),
+                        $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
+                        (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray());
+        }
+        switch (run.CurrentRoom)
+        {
+            case EventRoom eventRoom:
+                EventModel? model = null;
+                try { model = eventRoom.LocalMutableEvent; }
+                catch (Exception error) { Godot.GD.PushWarning($"[SpireCompanion] event_state: {error.Message}"); }
+                model ??= eventRoom.CanonicalEvent;
+                if (model == null) return new RoomView("Event", "事件（内容未就绪）", "", []);
+                return new RoomView("Event", Text(model.Title), Text(model.Description),
+                    model.CurrentOptions?.Select((option, index) => new RoomOptionView(
+                        index.ToString(), Text(option.Title), Text(option.Description), option.IsLocked)).ToArray() ?? []);
+            case MerchantRoom shop:
+                var inventory = shop.GetLocalInventory();
+                return new RoomView("Shop", "商店", "金币有限，先买最缺的",
+                    inventory?.AllEntries.Select((entry, index) =>
+                    {
+                        var (name, detail) = Entry(entry);
+                        return new RoomOptionView(index.ToString(), name, detail, !entry.IsStocked || !entry.EnoughGold);
+                    }).ToArray() ?? []);
+            case RestSiteRoom rest:
+                return new RoomView("Rest", "休息点", "选择休息或升级",
+                    rest.Options.Select((option, index) => new RoomOptionView(
+                        string.IsNullOrEmpty(option.OptionId) ? index.ToString() : option.OptionId,
+                        Text(option.Title), Text(option.Description), !option.IsEnabled)).ToArray());
+            case MapRoom:
+                // Next reachable nodes are exactly the current point's children: no hidden topology.
+                var point = run.CurrentMapPoint;
+                return new RoomView("Map", "地图", "选择下一层路线",
+                    point?.Children.OrderBy(child => child.PointType.ToString())
+                        .Select((child, index) => new RoomOptionView(index.ToString(), PointName(child.PointType), "可达节点", false))
+                        .ToArray() ?? []);
+            default:
+                return null;
+        }
+    }
+
+    private static (string Name, string Detail) Entry(MerchantEntry entry) => entry switch
+    {
+        MerchantCardEntry card when card.CreationResult?.Card is { } model =>
+            (Text(model.Title), $"{card.Cost} 金币{(card.IsOnSale ? " · 打折" : "")}{(card.IsStocked ? "" : " · 已售出")}"),
+        MerchantRelicEntry relic when relic.Model is { } model =>
+            (Text(model.Title), $"{relic.Cost} 金币{(relic.IsStocked ? "" : " · 已售出")}"),
+        MerchantPotionEntry potion when potion.Model is { } model =>
+            (Text(model.Title), $"{potion.Cost} 金币{(potion.IsStocked ? "" : " · 已售出")}"),
+        MerchantCardRemovalEntry removal => ("删牌服务", $"{removal.Cost} 金币{(removal.Used ? " · 已使用" : "")}"),
+        _ => ("商品", $"{entry.Cost} 金币")
+    };
+
+    private static string PointName(MapPointType type) => type switch
+    {
+        MapPointType.Monster => "小怪",
+        MapPointType.Elite => "精英",
+        MapPointType.Boss => "Boss",
+        MapPointType.Shop => "商店",
+        MapPointType.RestSite => "休息点",
+        MapPointType.Treasure => "宝箱",
+        MapPointType.Ancient => "远古",
+        _ => "未知"
+    };
+
+    // The card reward screen exposes cards only through its holders; there is no model list to read.
+    private static IEnumerable<NCardHolder> CardHolders(Godot.Node node)
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is NCardHolder holder) yield return holder;
+            foreach (var nested in CardHolders(child)) yield return nested;
+        }
     }
 
     private static CardView Card(CardModel card, int index, bool inHand) => new(index, card.Id.Entry, Text(card.Title),
