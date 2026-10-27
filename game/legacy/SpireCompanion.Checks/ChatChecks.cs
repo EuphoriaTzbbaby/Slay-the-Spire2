@@ -115,6 +115,17 @@ internal static class ChatChecks
             finally {File.Delete(path);}
             return Task.CompletedTask;
         });
+        await Check("Markdown replies become BBCode and raw brackets are escaped", () =>
+        {
+            var text = ChatMarkdown.ToBbcode("**结论**：先防御。\n- 打 `打击`\n# 标题\n[链接](https://example.com)\n```\ncode\n```\n数值 [2]");
+            Require(text.Contains("[b]结论[/b]"));
+            Require(text.Contains("• 打 [color=#B45309]打击[/color]"));
+            Require(text.Contains("[b]标题[/b]"));
+            Require(text.Contains("链接（https://example.com）"));
+            Require(!text.Contains("```"));
+            Require(text.Contains("[lb]2[rb]"));
+            return Task.CompletedTask;
+        });
         return passed;
     }
     private sealed class Handler(Func<HttpRequestMessage,CancellationToken,Task<HttpResponseMessage>> callback) : HttpMessageHandler

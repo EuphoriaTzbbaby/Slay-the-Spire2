@@ -18,10 +18,11 @@ internal sealed class ChatPanel : IDisposable
     private string? keyOrigin;
     private readonly OptionButton mode = new();
     private readonly Label info = new() { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-    private readonly TextEdit transcript = new()
+    private readonly RichTextLabel transcript = new()
     {
-        Editable = false, SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-        CustomMinimumSize = new Vector2(0, 240), WrapMode = TextEdit.LineWrappingMode.Boundary
+        BbcodeEnabled = true, ScrollActive = true, ScrollFollowing = true, SelectionEnabled = true,
+        SizeFlagsVertical = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 240),
+        AutowrapMode = TextServer.AutowrapMode.WordSmart
     };
     private readonly LineEdit question = new() { PlaceholderText = "问问搭子，或点击分析当前局面", MaxLength = 4000 };
     private readonly Button test = new() { Text = "测试连接" };
@@ -30,6 +31,7 @@ internal sealed class ChatPanel : IDisposable
     private readonly Button advice = new() { Text = "分析当前局面" };
     private readonly Button cancel = new() { Text = "取消回复", Disabled = true };
     private readonly Button save = new() { Text = "保存设置" };
+    private VBoxContainer welcome = null!;
     private bool busy;
     private bool cancelRequested;
     private bool disposed;
@@ -64,6 +66,7 @@ internal sealed class ChatPanel : IDisposable
         actions.AddThemeConstantOverride("separation", 8);
         save.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         UiStyle.Primary(save);
+        UiStyle.Size(save, 46); UiStyle.Size(test, 46, 110); UiStyle.Size(forget, 38); UiStyle.Size(importOld, 38);
         actions.AddChild(save); actions.AddChild(test);
         modelCard.AddChild(actions);
 
@@ -73,6 +76,26 @@ internal sealed class ChatPanel : IDisposable
         styleCard.AddChild(mode);
         styleCard.AddChild(UiStyle.Hint("安静只回关键点，普通会解释依据，话多会多聊几句。"));
 
+        welcome = new VBoxContainer();
+        welcome.AddThemeConstantOverride("separation", 6);
+        if (UiStyle.Avatar is { } face)
+            welcome.AddChild(new TextureRect
+            {
+                Texture = face, CustomMinimumSize = new Vector2(96, 96), SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered
+            });
+        var hi = new Label { Text = "我是奶龙，你的尖塔陪练。", HorizontalAlignment = HorizontalAlignment.Center };
+        hi.AddThemeFontSizeOverride("font_size", 20);
+        welcome.AddChild(hi);
+        var tip = new Label
+        {
+            Text = "先随便聊聊，或点「分析当前局面」看看这一手该打哪张牌。",
+            HorizontalAlignment = HorizontalAlignment.Center, AutowrapMode = TextServer.AutowrapMode.WordSmart
+        };
+        tip.AddThemeColorOverride("font_color", UiStyle.Muted);
+        welcome.AddChild(tip);
+        chat.AddChild(welcome);
+
         var transcriptCard = UiStyle.Card(chat, "对话");
         transcriptCard.AddChild(transcript);
         chat.AddChild(question);
@@ -80,10 +103,11 @@ internal sealed class ChatPanel : IDisposable
         buttons.AddThemeConstantOverride("separation", 8);
         send.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         UiStyle.Primary(send);
-        send.Disabled = false;
-        buttons.AddChild(send); buttons.AddChild(advice); buttons.AddChild(cancel);
+        UiStyle.Size(send, 44); UiStyle.Size(advice, 44, 132); UiStyle.Size(cancel, 44, 108);
         var clear = new Button { Text = "清空" };
-        buttons.AddChild(clear);
+        UiStyle.Size(clear, 44, 76);
+        buttons.AddChild(send); buttons.AddChild(advice); buttons.AddChild(cancel); buttons.AddChild(clear);
+        cancel.Visible = false;
         chat.AddChild(buttons);
         chat.AddChild(UiStyle.Hint("只提供建议，不会自动出牌、购物或用药。回复可能产生模型服务费用。"));
         chat.AddChild(info);
@@ -95,7 +119,7 @@ internal sealed class ChatPanel : IDisposable
         clear.Pressed += () =>
         {
             if (busy) { info.Text = "请先取消并等待当前回复结束。"; return; }
-            conversation.Clear(); transcript.Text = ""; info.Text = "已清空本次会话。";
+            conversation.Clear(); transcript.Clear(); info.Text = "已清空本次会话。";
         };
         save.Pressed += Save;
         test.Pressed += TestConnection;
@@ -125,7 +149,7 @@ internal sealed class ChatPanel : IDisposable
 
     private void OnProfileChanged(EncryptedProfileStore.Session? profile)
     {
-        conversation.Clear(); transcript.Text = ""; key.Text = ""; requestNumber++;
+        conversation.Clear(); transcript.Clear(); key.Text = ""; requestNumber++;
         settings = ChatSettings.Load(settingsPath);
         endpoint.Text = settings.Endpoint; model.Text = settings.Model;
         mode.Select(settings.TalkMode switch { "quiet" => 0, "chatty" => 2, _ => 1 });
@@ -282,15 +306,17 @@ internal sealed class ChatPanel : IDisposable
     {
         if (value) cancelRequested = false;
         profiles.SetChatBusy(value);
-        busy = value; send.Disabled = advice.Disabled = save.Disabled = test.Disabled = value; cancel.Disabled = !value;
+        busy = value; send.Disabled = advice.Disabled = save.Disabled = test.Disabled = value;
+        cancel.Disabled = !value; cancel.Visible = value;
         endpoint.Editable = model.Editable = key.Editable = !value; mode.Disabled = value; remember.Disabled = forget.Disabled = value;
     }
     private void Append(string who, string text)
     {
-        transcript.Text += $"{who}：{text}\n\n";
+        welcome.Visible = false;
+        var color = who == "你" ? "#C2410C" : "#B45309";
+        transcript.AppendText($"[color={color}][b]{who}[/b][/color]  {ChatMarkdown.ToBbcode(text)}\n\n");
         // Bounded visible history; model history is independently bounded by conversation pairs.
-        if (transcript.Text.Length > 24_000) transcript.Text = transcript.Text[^24_000..];
-        transcript.ScrollVertical = transcript.GetLineCount();
+        if (transcript.GetParsedText().Length > 24_000) transcript.Clear();
     }
     public void Dispose()
     {

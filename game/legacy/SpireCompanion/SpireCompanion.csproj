@@ -11,6 +11,7 @@
     <Reference Include="sts2"><HintPath>$(STS2GameDataDir)/sts2.dll</HintPath><Private>false</Private></Reference>
     <Reference Include="GodotSharp"><HintPath>$(STS2GameDataDir)/GodotSharp.dll</HintPath><Private>false</Private></Reference>
     <None Update="SpireCompanion.json" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Assets/nailong-avatar.png" />
   </ItemGroup>
   <Target Name="ValidateGame" BeforeTargets="ResolveAssemblyReferences">
     <Error Condition="!Exists('$(STS2GameDataDir)/sts2.dll') or !Exists('$(STS2GameDataDir)/GodotSharp.dll')" Text="请通过 STS2GameDataDir 或 game/legacy/local.props 指定包含 sts2.dll 和 GodotSharp.dll 的游戏数据目录。" />

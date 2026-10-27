@@ -17,6 +17,38 @@ internal static class UiStyle
     public static readonly Color Muted = new("9A7B57");
     public static readonly Color Good = new("4CAF50");
 
+    private static Texture2D? avatar;
+    private static Texture2D? avatarSmall;
+    private static bool avatarTried;
+
+    /// <summary>Mascot loaded from the embedded PNG; null keeps the window text-only if decoding fails.</summary>
+    public static Texture2D? Avatar
+    {
+        get
+        {
+            if (avatarTried) return avatar;
+            avatarTried = true;
+            try
+            {
+                using var stream = typeof(UiStyle).Assembly.GetManifestResourceStream("SpireCompanion.Assets.nailong-avatar.png");
+                if (stream == null) return null;
+                using var memory = new MemoryStream();
+                stream.CopyTo(memory);
+                var image = new Image();
+                if (image.LoadPngFromBuffer(memory.ToArray()) != Error.Ok) return null;
+                var small = (Image)image.Duplicate();
+                small.Resize(32, 32, Image.Interpolation.Bilinear);
+                avatarSmall = ImageTexture.CreateFromImage(small);
+                return avatar = ImageTexture.CreateFromImage(image);
+            }
+            catch (Exception error)
+            {
+                GD.PushWarning($"[SpireCompanion] avatar: {error.Message}");
+                return null;
+            }
+        }
+    }
+
     public static StyleBoxFlat Box(Color fill, Color line, int radius = 12, int padding = 12) => new()
     {
         BgColor = fill,
@@ -105,11 +137,40 @@ internal static class UiStyle
         button.AddThemeColorOverride("font_pressed_color", Colors.White);
     }
 
+    /// <summary>Small copy for button icons: a 256px texture would be drawn at full size.</summary>
+    public static Texture2D? SmallAvatar => avatarTried ? avatarSmall : (Avatar == null ? null : avatarSmall);
+
+    /// <summary>TabBar lives inside TabContainer, so theme entries alone are not reliable: override the instance.</summary>
+    public static void StyleTabs(TabContainer tabs)
+    {
+        var bar = tabs.GetTabBar();
+        if (bar == null) return;
+        bar.AddThemeStyleboxOverride("tab_selected", Box(Accent, AccentDeep, 10, 10));
+        bar.AddThemeStyleboxOverride("tab_unselected", Box(new Color("FFEBC4"), new Color("E8C892"), 10, 10));
+        bar.AddThemeStyleboxOverride("tab_hovered", Box(new Color("FFDD9E"), AccentDeep, 10, 10));
+        bar.AddThemeStyleboxOverride("tab_disabled", Box(new Color("F6EBD8"), new Color("E0CBA6"), 10, 10));
+        bar.AddThemeColorOverride("font_selected_color", Colors.White);
+        bar.AddThemeColorOverride("font_unselected_color", new Color("8A6A45"));
+        bar.AddThemeColorOverride("font_hovered_color", Text);
+        bar.AddThemeColorOverride("font_disabled_color", Muted);
+        bar.AddThemeFontSizeOverride("font_size", 18);
+    }
+
+    /// <summary>Same height and padding everywhere, so a row of actions reads as one group.</summary>
+    public static T Size<T>(T button, int height = 42, int minWidth = 0) where T : Control
+    {
+        button.CustomMinimumSize = new Vector2(minWidth, height);
+        return button;
+    }
+
     /// <summary>Adds a rounded white card and returns the container to fill.</summary>
     public static VBoxContainer Card(VBoxContainer parent, string title)
     {
         var card = new PanelContainer();
-        card.AddThemeStyleboxOverride("panel", Box(CardColor, new Color("EFD3A0"), 16, 12));
+        var cardStyle = Box(CardColor, new Color("EFD3A0"), 16, 12);
+        cardStyle.ShadowColor = new Color(0.55f, 0.36f, 0.10f, 0.10f);
+        cardStyle.ShadowSize = 4;
+        card.AddThemeStyleboxOverride("panel", cardStyle);
         parent.AddChild(card);
         var body = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         body.AddThemeConstantOverride("separation", 6);
