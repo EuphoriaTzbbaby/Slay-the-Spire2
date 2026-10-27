@@ -123,7 +123,13 @@ internal sealed class LocalProfilePanel : IDisposable
     }
     private void Reload()
     {
-        try{profiles=store.ListProfiles();selector.Clear();foreach(var p in profiles)selector.AddItem(p.Name);}
+        try
+        {
+            profiles=store.ListProfiles();selector.Clear();
+            // An empty option button renders as a black bar, so say what the empty state means.
+            if(profiles.Length==0){selector.AddItem("尚未创建档案");selector.Select(0);status.Text="尚未创建本地档案：填写名字和至少 8 位密码后点击“创建本地档案”。";}
+            else foreach(var p in profiles)selector.AddItem(p.Name);
+        }
         catch(Exception error)when(error is IOException or UnauthorizedAccessException or ProfileVaultException)
         {status.Text="档案列表读取失败，请检查本地档案目录。";}
     }
@@ -131,7 +137,8 @@ internal sealed class LocalProfilePanel : IDisposable
     private void UpdateButtons()
     {
         bool block=working||chatBusy;
-        create.Disabled=unlock.Disabled=lockButton.Disabled=selector.Disabled=automatic.Disabled=block;
+        create.Disabled=unlock.Disabled=lockButton.Disabled=automatic.Disabled=block;
+        selector.Disabled=block||profiles.Length==0;
         name.Editable=password.Editable=!block;
     }
     public void Dispose(){disposed=true;Current?.Dispose();Current=null;}

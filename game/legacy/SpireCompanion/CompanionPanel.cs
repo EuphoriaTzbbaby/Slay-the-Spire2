@@ -37,6 +37,7 @@ internal sealed class CompanionPanel
         panel = new PanelContainer { Position = new Vector2(24, 70) };
         // Use game fonts, never depend on operating-system font enumeration.
         panel.Theme = new Theme { DefaultFontSize = 18 };
+        StyleTheme(panel.Theme);
         panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
         {
             BgColor = new Color("18212e"), BorderColor = new Color("46617e"),
@@ -94,6 +95,46 @@ internal sealed class CompanionPanel
             catch (Exception error) { GD.PushError($"[SpireCompanion] shutdown_stop: {error}"); }
         };
         Refresh();
+    }
+
+    // The window owns its theme. Without explicit styleboxes the game's default theme
+    // paints line edits and an empty option button almost black, which reads as a bug.
+    private static void StyleTheme(Theme theme)
+    {
+        StyleBoxFlat Field(string fill, string line) => new()
+        {
+            BgColor = new Color(fill), BorderColor = new Color(line),
+            BorderWidthLeft = 1, BorderWidthTop = 1, BorderWidthRight = 1, BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 6, CornerRadiusTopRight = 6, CornerRadiusBottomLeft = 6, CornerRadiusBottomRight = 6,
+            ContentMarginLeft = 8, ContentMarginRight = 8, ContentMarginTop = 5, ContentMarginBottom = 5
+        };
+        var idle = Field("0e1621", "3d5875");
+        var focus = Field("0e1621", "7fa6c9");
+        foreach (var type in new[] { "LineEdit", "TextEdit" })
+        {
+            theme.SetStylebox("normal", type, idle);
+            theme.SetStylebox("focus", type, focus);
+            theme.SetStylebox("read_only", type, idle);
+        }
+        theme.SetStylebox("normal", "OptionButton", idle);
+        theme.SetStylebox("focus", "OptionButton", focus);
+        theme.SetStylebox("hover", "OptionButton", Field("16202f", "5b7fa6"));
+        theme.SetStylebox("pressed", "OptionButton", Field("16202f", "7fa6c9"));
+        theme.SetStylebox("disabled", "OptionButton", Field("131c28", "2b3a4a"));
+        theme.SetStylebox("normal", "Button", Field("1f2c3d", "46617e"));
+        theme.SetStylebox("focus", "Button", focus);
+        theme.SetStylebox("hover", "Button", Field("2a3b52", "6d8fb5"));
+        theme.SetStylebox("pressed", "Button", Field("16202f", "7fa6c9"));
+        theme.SetStylebox("disabled", "Button", Field("141b24", "2b3a4a"));
+        theme.SetColor("font_color", "Button", new Color("dfe8f2"));
+        theme.SetColor("font_hover_color", "Button", new Color("ffffff"));
+        theme.SetColor("font_disabled_color", "Button", new Color("75828f"));
+        theme.SetColor("font_color", "OptionButton", new Color("dfe8f2"));
+        theme.SetColor("font_disabled_color", "OptionButton", new Color("75828f"));
+        theme.SetColor("font_color", "LineEdit", new Color("e8eef6"));
+        theme.SetColor("font_placeholder_color", "LineEdit", new Color("8194a8"));
+        theme.SetColor("font_uneditable_color", "LineEdit", new Color("8c9aab"));
+        theme.SetColor("font_color", "TextEdit", new Color("dfe8f2"));
     }
 
     private void Tick(double delta)
