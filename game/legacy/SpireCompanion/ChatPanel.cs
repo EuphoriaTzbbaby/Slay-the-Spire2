@@ -170,14 +170,23 @@ internal sealed class ChatPanel : IDisposable
         try
         {
             var next = FromFields(); _ = next.RequestUri();
-            if (next.RememberApiKey)
+            string detail;
+            if (!next.RememberApiKey)
             {
-                if (profiles.Current == null) throw new ProfileVaultException("请先创建或解锁本地档案，再保存 API Key。");
-                profiles.Current.SaveApiKey(next.Endpoint, key.Text);
+                profiles.Current?.DeleteApiKey(next.Endpoint);
+                detail = "设置已保存，密钥仅保留在当前会话。";
             }
-            else profiles.Current?.DeleteApiKey(next.Endpoint);
+            else if (profiles.Current == null)
+                detail = "设置已保存；未解锁本地档案，API Key 未落盘，仅在本次会话有效。";
+            else if (string.IsNullOrWhiteSpace(key.Text))
+                detail = "设置已保存；密钥输入为空，档案中未写入 API Key。";
+            else
+            {
+                profiles.Current.SaveApiKey(next.Endpoint, key.Text);
+                detail = "设置已保存，API Key 已加密写入当前本地档案。";
+            }
             next.Save(settingsPath); settings = next;
-            info.Text = next.RememberApiKey ? "设置已保存，API Key 已加密写入当前本地档案。" : "设置已保存，密钥仅保留在当前会话。";
+            info.Text = detail;
         }
         catch (Exception error) when (error is ProfileVaultException or System.Security.Cryptography.CryptographicException or ArgumentException or IOException or UnauthorizedAccessException or InvalidOperationException or PlatformNotSupportedException or System.Runtime.InteropServices.ExternalException or TypeInitializationException or DllNotFoundException or EntryPointNotFoundException or UriFormatException)
         { info.Text = error is ProfileVaultException ? error.Message : "保存失败，请检查配置、密钥或本地档案权限。"; }
