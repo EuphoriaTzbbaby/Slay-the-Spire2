@@ -18,12 +18,12 @@ internal sealed class ChatPanel : IDisposable
     private string? keyOrigin;
     private readonly OptionButton mode = new();
     private readonly Label info = new() { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-    private readonly RichTextLabel transcript = new()
+    private readonly ScrollContainer logScroll = new()
     {
-        BbcodeEnabled = true, ScrollActive = true, ScrollFollowing = true, SelectionEnabled = true,
-        SizeFlagsVertical = Control.SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 240),
-        AutowrapMode = TextServer.AutowrapMode.WordSmart
+        SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+        CustomMinimumSize = new Vector2(0, 260)
     };
+    private readonly VBoxContainer log = new() { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
     private readonly LineEdit question = new() { PlaceholderText = "问问搭子，或点击分析当前局面", MaxLength = 4000 };
     private readonly Button test = new() { Text = "测试连接" };
     private CancellationTokenSource? probe;
@@ -65,8 +65,8 @@ internal sealed class ChatPanel : IDisposable
         var actions = new HBoxContainer();
         actions.AddThemeConstantOverride("separation", 8);
         save.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        UiStyle.Primary(save);
-        UiStyle.Size(save, 46); UiStyle.Size(test, 46, 110); UiStyle.Size(forget, 38); UiStyle.Size(importOld, 38);
+        UiStyle.Primary(save); UiStyle.Secondary(test); UiStyle.Danger(forget); UiStyle.Ghost(importOld);
+        UiStyle.Size(save, 46); UiStyle.Size(test, 46, 110); UiStyle.Size(forget, 42, 190); UiStyle.Size(importOld, 42);
         actions.AddChild(save); actions.AddChild(test);
         modelCard.AddChild(actions);
 
@@ -77,35 +77,23 @@ internal sealed class ChatPanel : IDisposable
         styleCard.AddChild(UiStyle.Hint("安静只回关键点，普通会解释依据，话多会多聊几句。"));
 
         welcome = new VBoxContainer();
-        welcome.AddThemeConstantOverride("separation", 6);
-        if (UiStyle.Avatar is { } face)
-            welcome.AddChild(new TextureRect
-            {
-                Texture = face, CustomMinimumSize = new Vector2(96, 96), SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter,
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered
-            });
-        var hi = new Label { Text = "我是奶龙，你的尖塔陪练。", HorizontalAlignment = HorizontalAlignment.Center };
-        hi.AddThemeFontSizeOverride("font_size", 20);
-        welcome.AddChild(hi);
-        var tip = new Label
-        {
-            Text = "先随便聊聊，或点「分析当前局面」看看这一手该打哪张牌。",
-            HorizontalAlignment = HorizontalAlignment.Center, AutowrapMode = TextServer.AutowrapMode.WordSmart
-        };
-        tip.AddThemeColorOverride("font_color", UiStyle.Muted);
-        welcome.AddChild(tip);
+        welcome.AddThemeConstantOverride("separation", 8);
+        welcome.AddChild(Speech(
+            "我是奶龙，你的尖塔陪练。先随便聊聊，或者点「分析当前局面」，我看看这一手该打哪张牌。", 132));
         chat.AddChild(welcome);
 
         var transcriptCard = UiStyle.Card(chat, "对话");
-        transcriptCard.AddChild(transcript);
+        log.AddThemeConstantOverride("separation", 8);
+        logScroll.AddChild(log);
+        transcriptCard.AddChild(logScroll);
         chat.AddChild(question);
         var buttons = new HBoxContainer();
         buttons.AddThemeConstantOverride("separation", 8);
         send.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         UiStyle.Primary(send);
-        UiStyle.Size(send, 44); UiStyle.Size(advice, 44, 132); UiStyle.Size(cancel, 44, 108);
         var clear = new Button { Text = "清空" };
-        UiStyle.Size(clear, 44, 76);
+        UiStyle.Secondary(advice); UiStyle.Ghost(cancel); UiStyle.Ghost(clear);
+        UiStyle.Size(send, 44); UiStyle.Size(advice, 44, 132); UiStyle.Size(cancel, 44, 108); UiStyle.Size(clear, 44, 76);
         buttons.AddChild(send); buttons.AddChild(advice); buttons.AddChild(cancel); buttons.AddChild(clear);
         cancel.Visible = false;
         chat.AddChild(buttons);
@@ -119,7 +107,7 @@ internal sealed class ChatPanel : IDisposable
         clear.Pressed += () =>
         {
             if (busy) { info.Text = "请先取消并等待当前回复结束。"; return; }
-            conversation.Clear(); transcript.Clear(); info.Text = "已清空本次会话。";
+            conversation.Clear(); ClearLog(); info.Text = "已清空本次会话。";
         };
         save.Pressed += Save;
         test.Pressed += TestConnection;
@@ -149,7 +137,7 @@ internal sealed class ChatPanel : IDisposable
 
     private void OnProfileChanged(EncryptedProfileStore.Session? profile)
     {
-        conversation.Clear(); transcript.Clear(); key.Text = ""; requestNumber++;
+        conversation.Clear(); ClearLog(); key.Text = ""; requestNumber++;
         settings = ChatSettings.Load(settingsPath);
         endpoint.Text = settings.Endpoint; model.Text = settings.Model;
         mode.Select(settings.TalkMode switch { "quiet" => 0, "chatty" => 2, _ => 1 });
@@ -313,10 +301,66 @@ internal sealed class ChatPanel : IDisposable
     private void Append(string who, string text)
     {
         welcome.Visible = false;
-        var color = who == "你" ? "#C2410C" : "#B45309";
-        transcript.AppendText($"[color={color}][b]{who}[/b][/color]  {ChatMarkdown.ToBbcode(text)}\n\n");
+        var assistant = who != "你";
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        row.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        var bubble = new PanelContainer();
+        bubble.AddThemeStyleboxOverride("panel", assistant
+            ? UiStyle.Box(UiStyle.CardColor, new Color("EFD3A0"), 14, 10)
+            : UiStyle.Box(new Color("FFE9C8"), new Color("E8AE4B"), 14, 10));
+        bubble.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        var body = new RichTextLabel
+        {
+            BbcodeEnabled = true, FitContent = true, ScrollActive = false, SelectionEnabled = true,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        var color = assistant ? "#B45309" : "#C2410C";
+        body.AppendText($"[color={color}][b]{who}[/b][/color]  {ChatMarkdown.ToBbcode(text)}");
+        bubble.AddChild(body);
+        if (assistant && UiStyle.Avatar is { } face)
+            row.AddChild(new TextureRect
+            {
+                Texture = face, CustomMinimumSize = new Vector2(36, 36), SizeFlagsVertical = Control.SizeFlags.ShrinkBegin,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered
+            });
+        row.AddChild(bubble);
+        log.AddChild(row);
+        while (log.GetChildCount() > 60) log.GetChild(0).Free();
         // Bounded visible history; model history is independently bounded by conversation pairs.
-        if (transcript.GetParsedText().Length > 24_000) transcript.Clear();
+        logScroll.SetDeferred(ScrollContainer.PropertyName.ScrollVertical, 1_000_000);
+    }
+
+    private void ClearLog()
+    {
+        foreach (var child in log.GetChildren()) child.Free();
+        welcome.Visible = true;
+    }
+
+    /// <summary>One-off greeting: mascot on the left, the line in a speech bubble.</summary>
+    private static HBoxContainer Speech(string text, int mascot)
+    {
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 10);
+        if (UiStyle.Avatar is { } face)
+            row.AddChild(new TextureRect
+            {
+                Texture = face, CustomMinimumSize = new Vector2(mascot, mascot),
+                SizeFlagsVertical = Control.SizeFlags.ShrinkBegin,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered
+            });
+        var bubble = new PanelContainer();
+        bubble.AddThemeStyleboxOverride("panel", UiStyle.Box(UiStyle.CardColor, new Color("EFD3A0"), 16, 14));
+        bubble.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        var label = new Label
+        {
+            Text = text, AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        label.AddThemeFontSizeOverride("font_size", 19);
+        bubble.AddChild(label);
+        row.AddChild(bubble);
+        return row;
     }
     public void Dispose()
     {

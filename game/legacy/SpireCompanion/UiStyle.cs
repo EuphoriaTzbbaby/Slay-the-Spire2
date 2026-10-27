@@ -163,6 +163,39 @@ internal static class UiStyle
         return button;
     }
 
+    /// <summary>Secondary action: white fill, honey outline. Pairs with a single Primary.</summary>
+    public static void Secondary(Button button)
+    {
+        button.AddThemeStyleboxOverride("normal", Box(Colors.White, new Color("E8AE4B"), 10, 10));
+        button.AddThemeStyleboxOverride("hover", Box(new Color("FFF3DC"), AccentDeep, 10, 10));
+        button.AddThemeStyleboxOverride("pressed", Box(new Color("FFE1A6"), AccentDeep, 10, 10));
+        button.AddThemeStyleboxOverride("focus", Box(Colors.White, Accent, 10, 10));
+    }
+
+    /// <summary>Low emphasis: no fill until hovered, for destructive or optional actions.</summary>
+    public static void Ghost(Button button)
+    {
+        var clear = Box(new Color(0, 0, 0, 0), new Color(0, 0, 0, 0), 10, 10);
+        button.AddThemeStyleboxOverride("normal", clear);
+        button.AddThemeStyleboxOverride("focus", clear);
+        button.AddThemeStyleboxOverride("hover", Box(new Color("FFF3DC"), new Color("E8AE4B"), 10, 10));
+        button.AddThemeStyleboxOverride("pressed", Box(new Color("FFE1A6"), new Color("E8AE4B"), 10, 10));
+        button.AddThemeColorOverride("font_color", Muted);
+        button.AddThemeColorOverride("font_hover_color", Text);
+        button.AddThemeColorOverride("font_pressed_color", Text);
+    }
+
+    /// <summary>Destructive: used only for removing stored secrets.</summary>
+    public static void Danger(Button button)
+    {
+        button.AddThemeStyleboxOverride("normal", Box(new Color("FDEBEA"), new Color("E7B0AC"), 10, 10));
+        button.AddThemeStyleboxOverride("hover", Box(new Color("FAD9D6"), new Color("C2554F"), 10, 10));
+        button.AddThemeStyleboxOverride("pressed", Box(new Color("F3C3BF"), new Color("C2554F"), 10, 10));
+        button.AddThemeStyleboxOverride("focus", Box(new Color("FDEBEA"), new Color("C2554F"), 10, 10));
+        button.AddThemeColorOverride("font_color", new Color("A23B3B"));
+        button.AddThemeColorOverride("font_hover_color", new Color("8C2F2F"));
+    }
+
     /// <summary>Adds a rounded white card and returns the container to fill.</summary>
     public static VBoxContainer Card(VBoxContainer parent, string title)
     {

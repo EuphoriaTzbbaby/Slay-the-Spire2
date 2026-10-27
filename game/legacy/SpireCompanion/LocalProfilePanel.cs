@@ -39,6 +39,8 @@ internal sealed class LocalProfilePanel : IDisposable
         parent.AddChild(automatic);
         var buttons=new HBoxContainer();
         buttons.AddThemeConstantOverride("separation",6);
+        UiStyle.Secondary(create); UiStyle.Secondary(unlock); UiStyle.Ghost(lockButton);
+        UiStyle.Size(create,40,120); UiStyle.Size(unlock,40,100); UiStyle.Size(lockButton,40,96);
         buttons.AddChild(create);buttons.AddChild(unlock);buttons.AddChild(lockButton);
         parent.AddChild(buttons);parent.AddChild(status);
         create.Pressed += () =>

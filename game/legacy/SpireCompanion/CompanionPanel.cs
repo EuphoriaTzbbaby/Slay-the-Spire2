@@ -87,18 +87,23 @@ internal sealed class CompanionPanel
         var controlCard = UiStyle.Card(body, "手动控制");
         var pause = new Button { Text = "暂停所有本模块动作" };
         pause.Pressed += PauseAll;
+        UiStyle.Secondary(pause); UiStyle.Size(pause, 44);
         controlCard.AddChild(pause);
         var resume = new Button { Text = "启用本模块手动操作（非自动托管）" };
         resume.Pressed += () => { gate.Resume(); message = "已启用手动操作，仍需点击动作按钮。"; Refresh(); };
+        UiStyle.Secondary(resume); UiStyle.Size(resume, 44);
         controlCard.AddChild(resume);
         endTurn = new Button { Text = "手动结束回合" };
         endTurn.Pressed += SubmitEndTurn;
+        UiStyle.Primary(endTurn); UiStyle.Size(endTurn, 44);
         controlCard.AddChild(endTurn);
         solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
         solverStart.Pressed += StartSolver;
+        UiStyle.Secondary(solverStart); UiStyle.Size(solverStart, 44);
         controlCard.AddChild(solverStart);
         var export = new Button { Text = "导出当前状态（调试）" };
         export.Pressed += ExportSnapshot;
+        UiStyle.Ghost(export); UiStyle.Size(export, 40);
         controlCard.AddChild(export);
 
         chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
