@@ -31,9 +31,16 @@ internal sealed class LocalProfilePanel : IDisposable
     public LocalProfilePanel(VBoxContainer parent, Action<Action> onMain, Action<EncryptedProfileStore.Session?> changed)
     {
         this.onMain=onMain; this.changed=changed; store=new(Path.Combine(root,"profiles"));
-        parent.AddChild(new Label { Text="本地账户档案（云端登录后续接入）" });
-        parent.AddChild(selector); parent.AddChild(name); parent.AddChild(password); parent.AddChild(automatic);
-        var buttons=new HBoxContainer();buttons.AddChild(create);buttons.AddChild(unlock);buttons.AddChild(lockButton);parent.AddChild(buttons);parent.AddChild(status);
+        parent.AddChild(selector);
+        parent.AddChild(new Label { Text="新档案名字" });
+        parent.AddChild(name);
+        parent.AddChild(new Label { Text="解锁密码（至少 8 位）" });
+        parent.AddChild(password);
+        parent.AddChild(automatic);
+        var buttons=new HBoxContainer();
+        buttons.AddThemeConstantOverride("separation",6);
+        buttons.AddChild(create);buttons.AddChild(unlock);buttons.AddChild(lockButton);
+        parent.AddChild(buttons);parent.AddChild(status);
         create.Pressed += () =>
         {
             var display=name.Text;var secret=password.Text;bool auto=automatic.ButtonPressed;

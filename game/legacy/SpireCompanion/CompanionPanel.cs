@@ -13,8 +13,10 @@ internal sealed class CompanionPanel
     private ChatPanel chat = null!;
     private PanelContainer panel = null!;
     private Label status = null!;
+    private Label stateLabel = null!;
     private readonly SceneTree tree;
     private ScrollContainer chatScroll = null!;
+    private ScrollContainer settingsScroll = null!;
     private ScrollContainer gameScroll = null!;
     private bool dragging;
     private Vector2 dragOffset;
@@ -36,51 +38,60 @@ internal sealed class CompanionPanel
         var layer = new CanvasLayer { Layer = 90 };
         panel = new PanelContainer { Position = new Vector2(24, 70) };
         // Use game fonts, never depend on operating-system font enumeration.
-        panel.Theme = new Theme { DefaultFontSize = 18 };
-        StyleTheme(panel.Theme);
-        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        panel.Theme = new Theme();
+        UiStyle.Apply(panel.Theme);
+        panel.AddThemeStyleboxOverride("panel", UiStyle.Box(UiStyle.Background, UiStyle.Border, 20, 16));
+
+        var layout = new VBoxContainer();
+        layout.AddThemeConstantOverride("separation", 10);
+        panel.AddChild(layout);
+        var header = new HBoxContainer();
+        header.AddThemeConstantOverride("separation", 8);
+        layout.AddChild(header);
+        var title = new Label
         {
-            BgColor = new Color("18212e"), BorderColor = new Color("46617e"),
-            BorderWidthLeft = 1, BorderWidthTop = 1, BorderWidthRight = 1, BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 10, CornerRadiusTopRight = 10, CornerRadiusBottomLeft = 10, CornerRadiusBottomRight = 10,
-            ContentMarginLeft = 14, ContentMarginRight = 14, ContentMarginTop = 10, ContentMarginBottom = 14
-        });
-        var layout = new VBoxContainer(); panel.AddChild(layout);
-        var header = new HBoxContainer(); layout.AddChild(header);
-        var title = new Label { Text = "尖塔 AI 陪玩 · 拖动标题移动", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            MouseFilter = Control.MouseFilterEnum.Stop };
+            Text = "尖塔 AI 陪玩", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Stop
+        };
+        title.AddThemeFontSizeOverride("font_size", 24);
         title.GuiInput += input =>
         {
             if (input is InputEventMouseButton mouse && mouse.ButtonIndex == MouseButton.Left && mouse.Pressed)
             { dragging = true; dragOffset = title.GetGlobalMousePosition() - panel.Position; }
         };
         header.AddChild(title);
+        stateLabel = new Label { Text = "就绪", VerticalAlignment = VerticalAlignment.Center };
+        stateLabel.AddThemeColorOverride("font_color", UiStyle.Good);
+        header.AddChild(stateLabel);
         var close = new Button { Text = "关闭" }; close.Pressed += () => panel.Hide(); header.AddChild(close);
+
         tabs = new TabContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill }; layout.AddChild(tabs);
-        chatScroll = new ScrollContainer { Name = "聊天与API", HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        var chatBody = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        chatScroll.AddChild(chatBody); tabs.AddChild(chatScroll);
-        gameScroll = new ScrollContainer { Name = "游戏状态与控制", HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
-        var body = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        gameScroll.AddChild(body); tabs.AddChild(gameScroll);
-        status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(400, 100) };
-        body.AddChild(status);
+        chatScroll = Page("聊天", out var chatBody);
+        settingsScroll = Page("设置", out var settingsBody);
+        gameScroll = Page("游戏状态", out var body);
+
+        var statusCard = UiStyle.Card(body, "当前局面");
+        status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(0, 80) };
+        statusCard.AddChild(status);
+        var controlCard = UiStyle.Card(body, "手动控制");
         var pause = new Button { Text = "暂停所有本模块动作" };
         pause.Pressed += PauseAll;
-        body.AddChild(pause);
+        controlCard.AddChild(pause);
         var resume = new Button { Text = "启用本模块手动操作（非自动托管）" };
         resume.Pressed += () => { gate.Resume(); message = "已启用手动操作，仍需点击动作按钮。"; Refresh(); };
-        body.AddChild(resume);
+        controlCard.AddChild(resume);
         endTurn = new Button { Text = "手动结束回合" };
         endTurn.Pressed += SubmitEndTurn;
-        body.AddChild(endTurn);
+        controlCard.AddChild(endTurn);
         solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
         solverStart.Pressed += StartSolver;
-        body.AddChild(solverStart);
+        controlCard.AddChild(solverStart);
         var export = new Button { Text = "导出当前状态（调试）" };
         export.Pressed += ExportSnapshot;
-        body.AddChild(export);
-        chat = new ChatPanel(chatBody, mainQueue.Enqueue);
+        controlCard.AddChild(export);
+
+        chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
+
         layer.AddChild(panel);
         toggle = new Button { Text = "AI 搭子", Position = new Vector2(16, 16), TooltipText = "显示或隐藏窗口（F9）", Theme = panel.Theme };
         toggle.Pressed += () => panel.Visible = !panel.Visible;
@@ -97,53 +108,24 @@ internal sealed class CompanionPanel
         Refresh();
     }
 
-    // The window owns its theme. Without explicit styleboxes the game's default theme
-    // paints line edits and an empty option button almost black, which reads as a bug.
-    private static void StyleTheme(Theme theme)
+    private ScrollContainer Page(string name, out VBoxContainer body)
     {
-        StyleBoxFlat Field(string fill, string line) => new()
-        {
-            BgColor = new Color(fill), BorderColor = new Color(line),
-            BorderWidthLeft = 1, BorderWidthTop = 1, BorderWidthRight = 1, BorderWidthBottom = 1,
-            CornerRadiusTopLeft = 6, CornerRadiusTopRight = 6, CornerRadiusBottomLeft = 6, CornerRadiusBottomRight = 6,
-            ContentMarginLeft = 8, ContentMarginRight = 8, ContentMarginTop = 5, ContentMarginBottom = 5
-        };
-        var idle = Field("0e1621", "3d5875");
-        var focus = Field("0e1621", "7fa6c9");
-        foreach (var type in new[] { "LineEdit", "TextEdit" })
-        {
-            theme.SetStylebox("normal", type, idle);
-            theme.SetStylebox("focus", type, focus);
-            theme.SetStylebox("read_only", type, idle);
-        }
-        theme.SetStylebox("normal", "OptionButton", idle);
-        theme.SetStylebox("focus", "OptionButton", focus);
-        theme.SetStylebox("hover", "OptionButton", Field("16202f", "5b7fa6"));
-        theme.SetStylebox("pressed", "OptionButton", Field("16202f", "7fa6c9"));
-        theme.SetStylebox("disabled", "OptionButton", Field("131c28", "2b3a4a"));
-        theme.SetStylebox("normal", "Button", Field("1f2c3d", "46617e"));
-        theme.SetStylebox("focus", "Button", focus);
-        theme.SetStylebox("hover", "Button", Field("2a3b52", "6d8fb5"));
-        theme.SetStylebox("pressed", "Button", Field("16202f", "7fa6c9"));
-        theme.SetStylebox("disabled", "Button", Field("141b24", "2b3a4a"));
-        theme.SetColor("font_color", "Button", new Color("dfe8f2"));
-        theme.SetColor("font_hover_color", "Button", new Color("ffffff"));
-        theme.SetColor("font_disabled_color", "Button", new Color("75828f"));
-        theme.SetColor("font_color", "OptionButton", new Color("dfe8f2"));
-        theme.SetColor("font_disabled_color", "OptionButton", new Color("75828f"));
-        theme.SetColor("font_color", "LineEdit", new Color("e8eef6"));
-        theme.SetColor("font_placeholder_color", "LineEdit", new Color("8194a8"));
-        theme.SetColor("font_uneditable_color", "LineEdit", new Color("8c9aab"));
-        theme.SetColor("font_color", "TextEdit", new Color("dfe8f2"));
+        var page = new ScrollContainer { Name = name, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
+        body = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        body.AddThemeConstantOverride("separation", 8);
+        page.AddChild(body);
+        tabs.AddChild(page);
+        return page;
     }
 
     private void Tick(double delta)
     {
         while (mainQueue.TryDequeue(out var update)) update();
         var viewport = tree.Root.GetVisibleRect().Size;
-        var width = Math.Clamp(viewport.X - 40, 360, 600);
+        var width = Math.Clamp(viewport.X - 40, 360, 620);
         var height = Math.Clamp(viewport.Y - 100, 300, 720);
-        chatScroll.CustomMinimumSize = gameScroll.CustomMinimumSize = new Vector2(width - 40, 140);
+        chatScroll.CustomMinimumSize = settingsScroll.CustomMinimumSize = gameScroll.CustomMinimumSize =
+            new Vector2(width - 40, 140);
         panel.Size = new Vector2(width, height);
         if (dragging)
         {
@@ -157,10 +139,11 @@ internal sealed class CompanionPanel
             // Report the real laid-out geometry once so a broken window is diagnosable from the log alone.
             layoutReported = true;
             var titles = string.Join("|", Enumerable.Range(0, tabs.GetTabCount()).Select(tabs.GetTabTitle));
+            var page = tabs.GetCurrentTabControl();
             GD.Print($"[SpireCompanion] PANEL_LAYOUT viewport=({viewport.X},{viewport.Y}) " +
                 $"rect=({panel.Position.X},{panel.Position.Y},{panel.Size.X},{panel.Size.Y}) " +
                 $"tabs={tabs.GetTabCount()} titles={titles} current={tabs.CurrentTab} " +
-                $"scroll=({chatScroll.Size.X},{chatScroll.Size.Y}) status_height={status.Size.Y} " +
+                $"scroll=({chatScroll.Size.X},{chatScroll.Size.Y}) page=({page?.Size.X},{page?.Size.Y}) " +
                 $"font_ready={panel.Theme.DefaultFont != null} visible={panel.Visible}");
         }
         bool pressed = Input.IsPhysicalKeyPressed(Key.F9);
@@ -260,7 +243,9 @@ internal sealed class CompanionPanel
                 message = "状态已变化，已暂停；检查后可重新启用手动操作。";
             }
             shown = next;
-            status.Text = $"控制：{(SolverBridge.Owned ? "求解器接管" : gate.Paused ? "暂停" : "手动可用")}\n场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n{(next.CanEndTurn ? "可以手动结束回合" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
+            stateLabel.Text = SolverBridge.Owned ? "求解器接管" : gate.Paused ? "暂停" : "就绪";
+            stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : gate.Paused ? UiStyle.Muted : UiStyle.Good);
+            status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n{(next.CanEndTurn ? "可以手动结束回合" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
             endTurn.Disabled = gate.Paused || !next.CanEndTurn;
             solverStart.Disabled = !solver.Available || solver.FullAuto || solver.Deploying || SolverBridge.Owned || !SolverBridge.CanStart;
             if (!reportedReady)
