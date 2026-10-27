@@ -64,7 +64,7 @@ def main():
         scroll_w, scroll_h = float(layout.group(10)), float(layout.group(11))
         if w < 320 or h < 280 or x < 0 or y < 0 or x + w > vw + 1 or y + h > vh + 1:
             raise RuntimeError(f'Window geometry outside viewport: rect=({x},{y},{w},{h}) viewport=({vw},{vh}); inspect {stage}')
-        if tab_count != 2 or titles != '聊天与API|游戏状态与控制':
+        if tab_count != 3 or titles != '聊天|设置|游戏状态':
             raise RuntimeError(f'Unexpected tabs: count={tab_count} titles={titles}; inspect {stage}')
         # The scroll body must fill the tab, not collapse to its minimum: that would leave dead space.
         if scroll_h < h * 0.6 or scroll_w < w - 60:

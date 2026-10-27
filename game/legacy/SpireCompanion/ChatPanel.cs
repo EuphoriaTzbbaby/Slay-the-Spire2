@@ -10,17 +10,21 @@ internal sealed class ChatPanel : IDisposable
     private readonly Action<Action> onMain;
     private readonly LocalProfilePanel profiles;
     private string settingsPath => profiles.SettingsPath;
-    private readonly LineEdit endpoint = new() { PlaceholderText = "模型服务地址，例如 https://服务地址/v1" };
-    private readonly LineEdit model = new() { PlaceholderText = "模型名称" };
+    private readonly LineEdit endpoint = new() { PlaceholderText = "https://api.deepseek.com" };
+    private readonly LineEdit model = new() { PlaceholderText = "deepseek-flash" };
     private readonly LineEdit key = new() { PlaceholderText = "API Key（加密保存在本地档案）", Secret = true };
     private readonly CheckButton remember = new() { Text = "记住 API Key（加密保存在当前档案）", ButtonPressed = true };
     private readonly Button forget = new() { Text = "删除已记住的密钥" };
     private string? keyOrigin;
     private readonly OptionButton mode = new();
     private readonly Label info = new() { AutowrapMode = TextServer.AutowrapMode.WordSmart };
-    private readonly TextEdit transcript = new() { Editable = false, CustomMinimumSize = new Vector2(400, 170), WrapMode = TextEdit.LineWrappingMode.Boundary };
+    private readonly TextEdit transcript = new()
+    {
+        Editable = false, SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        CustomMinimumSize = new Vector2(0, 240), WrapMode = TextEdit.LineWrappingMode.Boundary
+    };
     private readonly LineEdit question = new() { PlaceholderText = "问问搭子，或点击分析当前局面", MaxLength = 4000 };
-    private readonly Button test = new() { Text = "测试 API 连接" };
+    private readonly Button test = new() { Text = "测试连接" };
     private CancellationTokenSource? probe;
     private readonly Button send = new() { Text = "发送" };
     private readonly Button advice = new() { Text = "分析当前局面" };
@@ -32,34 +36,58 @@ internal sealed class ChatPanel : IDisposable
     private int requestNumber;
     private ChatSettings settings = new();
 
-    public ChatPanel(VBoxContainer parent, Action<Action> onMain)
+    public ChatPanel(VBoxContainer chat, VBoxContainer settingsBody, Action<Action> onMain)
     {
         this.onMain = onMain;
         conversation = new ChatConversation(client);
-        profiles = new LocalProfilePanel(parent, onMain, OnProfileChanged);
-        parent.AddChild(new HSeparator());
-        parent.AddChild(new Label { Text = "文字搭子 · 只提供建议，不自动操作" });
-        parent.AddChild(new Label { Text = "API 地址（默认 DeepSeek，可修改）" });
-        parent.AddChild(endpoint);
-        parent.AddChild(new Label { Text = "模型名称（填写服务商提供的准确名称）" });
-        parent.AddChild(model);
-        parent.AddChild(new Label { Text = "API Key（可记住，下次启动自动加载）" });
-        parent.AddChild(key);
+
+        var profileCard = UiStyle.Card(settingsBody, "账户档案");
+        profiles = new LocalProfilePanel(profileCard, onMain, OnProfileChanged);
+
+        var modelCard = UiStyle.Card(settingsBody, "模型与连接");
+        modelCard.AddChild(new Label { Text = "API 地址（默认 DeepSeek，可修改）" });
+        modelCard.AddChild(endpoint);
+        modelCard.AddChild(new Label { Text = "模型名称" });
+        modelCard.AddChild(model);
+        modelCard.AddChild(new Label { Text = "API Key" });
+        modelCard.AddChild(key);
         var reveal = new CheckButton { Text = "显示密钥" };
         reveal.Toggled += visible => key.Secret = !visible;
-        parent.AddChild(reveal);
-        parent.AddChild(remember); parent.AddChild(forget);
-        parent.AddChild(new Label { Text = "API Key 保存在跨平台加密文件中，系统仅保管自动解锁凭据。", AutowrapMode = TextServer.AutowrapMode.WordSmart });
-        parent.AddChild(new Label { Text = "回复风格" });
+        modelCard.AddChild(reveal);
+        modelCard.AddChild(remember);
+        var importOld = new Button { Text = "导入此前的系统密钥（可选）" };
+        importOld.Pressed += ImportLegacy;
+        modelCard.AddChild(importOld);
+        modelCard.AddChild(forget);
+        modelCard.AddChild(UiStyle.Hint("密钥保存在本地加密档案中，系统只保存自动解锁凭据，不进入游戏设置或 Git。"));
+        var actions = new HBoxContainer();
+        actions.AddThemeConstantOverride("separation", 8);
+        save.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        UiStyle.Primary(save);
+        actions.AddChild(save); actions.AddChild(test);
+        modelCard.AddChild(actions);
+
+        var styleCard = UiStyle.Card(settingsBody, "回复风格");
         mode.AddItem("安静"); mode.AddItem("普通"); mode.AddItem("话多");
-        mode.Select(1); parent.AddChild(mode);
-        var configButtons = new HBoxContainer(); configButtons.AddChild(save); configButtons.AddChild(test); parent.AddChild(configButtons);
-        parent.AddChild(new Label { Text = "测试发送简短请求；普通对话附带当前游戏状态，可能产生模型服务费用。", AutowrapMode = TextServer.AutowrapMode.WordSmart });
-        parent.AddChild(transcript); parent.AddChild(question);
+        mode.Select(1);
+        styleCard.AddChild(mode);
+        styleCard.AddChild(UiStyle.Hint("安静只回关键点，普通会解释依据，话多会多聊几句。"));
+
+        var transcriptCard = UiStyle.Card(chat, "对话");
+        transcriptCard.AddChild(transcript);
+        chat.AddChild(question);
         var buttons = new HBoxContainer();
+        buttons.AddThemeConstantOverride("separation", 8);
+        send.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        UiStyle.Primary(send);
+        send.Disabled = false;
         buttons.AddChild(send); buttons.AddChild(advice); buttons.AddChild(cancel);
-        var clear = new Button { Text = "清空对话" }; buttons.AddChild(clear);
-        parent.AddChild(buttons); parent.AddChild(info);
+        var clear = new Button { Text = "清空" };
+        buttons.AddChild(clear);
+        chat.AddChild(buttons);
+        chat.AddChild(UiStyle.Hint("只提供建议，不会自动出牌、购物或用药。回复可能产生模型服务费用。"));
+        chat.AddChild(info);
+
         send.Pressed += () => Begin(question.Text);
         question.TextSubmitted += Begin;
         advice.Pressed += () => Begin("请根据当前局面给出最值得关注的建议，先说结论，再简短解释。如果缺少关键状态请说明。");
@@ -71,6 +99,8 @@ internal sealed class ChatPanel : IDisposable
         };
         save.Pressed += Save;
         test.Pressed += TestConnection;
+        forget.Pressed += Forget;
+        remember.Toggled += _ => { info.Text = "点击保存设置以应用密钥记忆选项。"; };
         try
         {
             settings = ChatSettings.Load(settingsPath);
@@ -91,11 +121,6 @@ internal sealed class ChatPanel : IDisposable
             { key.Text = ""; info.Text = "服务地址已更换，请填写对应服务的密钥。"; }
             if (next != null) keyOrigin = next;
         };
-        var importOld = new Button { Text = "导入此前保存的系统密钥（可选）" };
-        importOld.Pressed += ImportLegacy;
-        parent.AddChild(importOld);
-        forget.Pressed += Forget;
-        remember.Toggled += _ => { info.Text = "点击保存设置以应用密钥记忆选项。"; };
     }
 
     private void OnProfileChanged(EncryptedProfileStore.Session? profile)
