@@ -23,6 +23,9 @@ internal sealed class CompanionPanel
     private GameSnapshot? shown;
     private Button solverStart = null!;
     private bool reportedReady;
+    private bool layoutReported;
+    private int ticks;
+    private TabContainer tabs = null!;
     private double remaining;
     private bool f9Down;
     private string message = "默认暂停。本版仅供手动验证，不会自动出牌。";
@@ -52,7 +55,7 @@ internal sealed class CompanionPanel
         };
         header.AddChild(title);
         var close = new Button { Text = "关闭" }; close.Pressed += () => panel.Hide(); header.AddChild(close);
-        var tabs = new TabContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill }; layout.AddChild(tabs);
+        tabs = new TabContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill }; layout.AddChild(tabs);
         chatScroll = new ScrollContainer { Name = "聊天与API", HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled };
         var chatBody = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         chatScroll.AddChild(chatBody); tabs.AddChild(chatScroll);
@@ -99,7 +102,7 @@ internal sealed class CompanionPanel
         var viewport = tree.Root.GetVisibleRect().Size;
         var width = Math.Clamp(viewport.X - 40, 360, 600);
         var height = Math.Clamp(viewport.Y - 100, 300, 720);
-        chatScroll.CustomMinimumSize = gameScroll.CustomMinimumSize = new Vector2(width - 40, height - 90);
+        chatScroll.CustomMinimumSize = gameScroll.CustomMinimumSize = new Vector2(width - 40, 140);
         panel.Size = new Vector2(width, height);
         if (dragging)
         {
@@ -107,6 +110,18 @@ internal sealed class CompanionPanel
             else panel.Position = tree.Root.GetMousePosition() - dragOffset;
         }
         panel.Position = panel.Position.Clamp(Vector2.Zero, (viewport - panel.Size).Max(Vector2.Zero));
+        ticks++;
+        if (!layoutReported && ticks > 5 && panel.IsVisibleInTree())
+        {
+            // Report the real laid-out geometry once so a broken window is diagnosable from the log alone.
+            layoutReported = true;
+            var titles = string.Join("|", Enumerable.Range(0, tabs.GetTabCount()).Select(tabs.GetTabTitle));
+            GD.Print($"[SpireCompanion] PANEL_LAYOUT viewport=({viewport.X},{viewport.Y}) " +
+                $"rect=({panel.Position.X},{panel.Position.Y},{panel.Size.X},{panel.Size.Y}) " +
+                $"tabs={tabs.GetTabCount()} titles={titles} current={tabs.CurrentTab} " +
+                $"scroll=({chatScroll.Size.X},{chatScroll.Size.Y}) status_height={status.Size.Y} " +
+                $"font_ready={panel.Theme.DefaultFont != null} visible={panel.Visible}");
+        }
         bool pressed = Input.IsPhysicalKeyPressed(Key.F9);
         if (pressed && !f9Down) panel.Visible = !panel.Visible;
         f9Down = pressed;
