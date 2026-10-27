@@ -21,6 +21,11 @@ voice/.local/
 voice/dist/
 voice/build/
 
-# Relocated legacy runtime output
-game/legacy/data/replays/
-game/legacy/experiments/raw/
+# Per-machine game assembly references
+game/legacy/local.props
+
+# Local development evidence and installation backups
+.local/
+
+# Private local encrypted profiles (runtime files belong outside the repository)
+**/*.vault.json

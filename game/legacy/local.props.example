@@ -1,0 +1,4 @@
+<Project><PropertyGroup>
+  <!-- Copy to local.props and set your own game data directory. Do not commit local.props. -->
+  <STS2GameDataDir>C:/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64</STS2GameDataDir>
+</PropertyGroup></Project>

@@ -17,5 +17,18 @@ jobs:
           python-version: '3.11'
       - name: Check repository layout and protocol examples
         run: python scripts/check_repository.py
-      - name: Test legacy combat prototype
-        run: python scripts/test_legacy.py
+  game-control-checks:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+      - name: Check game action control without game installation
+        run: python scripts/game_dev.py check
