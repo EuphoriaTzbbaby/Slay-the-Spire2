@@ -8,7 +8,6 @@ namespace SpireCompanion;
 
 internal sealed class CompanionPanel
 {
-    private readonly ActionGate gate = new();
     private readonly ConcurrentQueue<Action> mainQueue = new();
     private ChatPanel chat = null!;
     private PanelContainer panel = null!;
@@ -20,11 +19,8 @@ internal sealed class CompanionPanel
     private ScrollContainer gameScroll = null!;
     private bool dragging;
     private Vector2 dragOffset;
-    private Button endTurn = null!;
     private Button pause = null!;
-    private Button resume = null!;
     private Button toggle = null!;
-    private GameSnapshot? shown;
     private Button solverStart = null!;
     private bool reportedReady;
     private bool layoutReported;
@@ -32,7 +28,7 @@ internal sealed class CompanionPanel
     private TabContainer tabs = null!;
     private double remaining;
     private bool f9Down;
-    private string message = "默认暂停。本版仅供手动验证，不会自动出牌。";
+    private string message = "只读建议：不会自动出牌，自动执行交给求解器。";
 
     public CompanionPanel(SceneTree tree)
     {
@@ -86,27 +82,22 @@ internal sealed class CompanionPanel
         var statusCard = UiStyle.Card(body, "当前局面");
         status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(0, 80) };
         statusCard.AddChild(status);
-        var controlCard = UiStyle.Card(body, "手动控制");
+        var controlCard = UiStyle.Card(body, "托管与求解器");
+        solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
+        solverStart.Pressed += StartSolver;
+        UiStyle.Primary(solverStart); UiStyle.Size(solverStart, 44);
+        controlCard.AddChild(solverStart);
         pause = new Button { Text = "暂停所有本模块动作" };
         pause.Pressed += PauseAll;
         UiStyle.Secondary(pause); UiStyle.Size(pause, 44);
         controlCard.AddChild(pause);
-        resume = new Button { Text = "启用手动操作" };
-        resume.Pressed += () => { gate.Resume(); message = "已启用手动操作，仍需点击动作按钮。"; Refresh(); };
-        UiStyle.Secondary(resume); UiStyle.Size(resume, 44);
-        controlCard.AddChild(resume);
-        endTurn = new Button { Text = "手动结束回合" };
-        endTurn.Pressed += SubmitEndTurn;
-        UiStyle.Primary(endTurn); UiStyle.Size(endTurn, 44);
-        controlCard.AddChild(endTurn);
-        solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
-        solverStart.Pressed += StartSolver;
-        UiStyle.Secondary(solverStart); UiStyle.Size(solverStart, 44);
-        controlCard.AddChild(solverStart);
-        var export = new Button { Text = "导出当前状态（调试）" };
+        controlCard.AddChild(UiStyle.Hint("本模块只给文字建议；战斗执行由求解器负责，不经过模型判断。"));
+
+        var debugCard = UiStyle.Card(body, "调试");
+        var export = new Button { Text = "导出当前状态" };
         export.Pressed += ExportSnapshot;
         UiStyle.Ghost(export); UiStyle.Size(export, 40);
-        controlCard.AddChild(export);
+        debugCard.AddChild(export);
 
         chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
 
@@ -123,7 +114,6 @@ internal sealed class CompanionPanel
         tree.ProcessFrame += () => Tick(tree.Root.GetProcessDeltaTime());
         tree.Root.TreeExiting += () =>
         {
-            gate.Pause();
             chat.Dispose();
             try { SolverBridge.StopOwned(); }
             catch (Exception error) { GD.PushError($"[SpireCompanion] shutdown_stop: {error}"); }
@@ -176,26 +166,6 @@ internal sealed class CompanionPanel
         if (remaining <= 0) { remaining = 0.25; Refresh(); }
     }
 
-    private void SubmitEndTurn()
-    {
-        if (shown == null) return;
-        var ticket = gate.Capture(shown.Fingerprint);
-        try
-        {
-            var fresh = GameReader.Read();
-            var result = gate.Execute(ticket, fresh.Fingerprint, fresh.CanEndTurn, GameReader.EndTurn);
-            message = result.Message;
-            GD.Print($"[SpireCompanion] end_turn submitted={result.Submitted} {message}");
-        }
-        catch (Exception error)
-        {
-            gate.Pause();
-            message = "操作异常，已暂停。请检查游戏日志；不会自动重试。";
-            GD.PushError($"[SpireCompanion] end_turn: {error}");
-        }
-        Refresh();
-    }
-
     private void ExportSnapshot()
     {
         try
@@ -219,7 +189,6 @@ internal sealed class CompanionPanel
 
     private void PauseAll()
     {
-        gate.Pause();
         chat.Cancel();
         try { SolverBridge.StopOwned(); message = "本模块已暂停，已接管的求解器也已停止。"; }
         catch (Exception error)
@@ -232,7 +201,6 @@ internal sealed class CompanionPanel
 
     private void StartSolver()
     {
-        gate.Pause(); // Native manual actions stay disabled while the solver owns execution.
         try { SolverBridge.Start(); message = "已交给 CombatSolver；暂停按钮可停止接管。"; }
         catch (Exception error)
         {
@@ -264,26 +232,20 @@ internal sealed class CompanionPanel
             SolverBridge.ObserveLifecycle();
             var next = GameReader.Read();
             var solver = SolverBridge.Status();
-            // Ending a turn changes the state on purpose, so manual mode stays enabled;
-            // stale or duplicate submissions are already rejected by the gate's fingerprint check.
-            shown = next;
-            stateLabel.Text = SolverBridge.Owned ? "求解器接管" : gate.Paused ? "暂停" : "就绪";
-            stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : gate.Paused ? UiStyle.Muted : UiStyle.Good);
-            status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n{(next.CanEndTurn ? "可以手动结束回合" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
-            endTurn.Disabled = gate.Paused || !next.CanEndTurn;
-            resume.Disabled = !gate.Paused;
-            resume.Text = gate.Paused ? "启用手动操作" : "手动操作已启用";
+            stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "只读建议";
+            stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : UiStyle.Good);
+            status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n阶段：{(next.CanEndTurn ? "可操作" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
             solverStart.Disabled = !solver.Available || solver.FullAuto || solver.Deploying || SolverBridge.Owned || !SolverBridge.CanStart;
             if (!reportedReady)
             {
                 reportedReady = true;
-                GD.Print($"[SpireCompanion] PANEL_READY scene={next.Scene} paused={gate.Paused} font_ready={font != null} fingerprint={next.Fingerprint[..16]}");
+                GD.Print($"[SpireCompanion] PANEL_READY scene={next.Scene} font_ready={font != null} fingerprint={next.Fingerprint[..16]}");
             }
         }
         catch (Exception error)
         {
-            gate.Pause(); shown = null; endTurn.Disabled = true; solverStart.Disabled = true;
-            status.Text = "状态读取失败，已暂停。详见游戏日志。";
+            solverStart.Disabled = true;
+            status.Text = "状态读取失败。详见游戏日志。";
             GD.PushError($"[SpireCompanion] read_state: {error}");
             // Avoid emitting a failing read every frame.
             remaining = 5;
