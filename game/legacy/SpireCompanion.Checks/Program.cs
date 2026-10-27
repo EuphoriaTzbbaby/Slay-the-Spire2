@@ -61,6 +61,13 @@ Check("Solver stop cannot claim success while deployment is still active", () =>
     Require(rejected && adapter.Status().Deploying && adapter.Status().Description.Contains("正在停止"));
     FakeSolver.KeepDeploying=false;adapter.Stop();Require(!adapter.Status().Deploying);
 });
+Check("Room options are part of the snapshot fingerprint", () => {
+    var room = new RoomView("Event", "金色神像", "一座神像。", [new RoomOptionView("0", "祈祷", "获得最大生命", false)]);
+    var a = new GameSnapshot("EventRoom", "铁甲战士", 60, 80, 99, [], "无", false, "") { Room = room };
+    var b = a with { Room = room with { Options = [new RoomOptionView("0", "祈祷", "失去最大生命", false)] } };
+    Require(a.Fingerprint != b.Fingerprint);
+    Require(a.Fingerprint == (a with { }).Fingerprint);
+});
 Check("Snapshot fingerprint excludes itself and detects combat changes", () => {
     var state=new GameSnapshot("combat","铁甲战士",70,80,100,["打击"],"1:Player",true,"")
         { Energy=3, Cards=[new CardView(0,"STRIKE","打击","1",false)] };
