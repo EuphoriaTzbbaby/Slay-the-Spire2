@@ -17,6 +17,7 @@ using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 
@@ -86,6 +87,8 @@ internal static class GameReader
     /// </summary>
     private static RoomView? ReadRoom(RunState run)
     {
+        // The map is an overlay that can be opened from any room, not only from MapRoom.
+        if (NMapScreen.Instance is { IsOpen: true }) return MapView(run);
         if (NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen rewardScreen)
         {
             var cards = CardHolders(rewardScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
@@ -120,15 +123,20 @@ internal static class GameReader
                         string.IsNullOrEmpty(option.OptionId) ? index.ToString() : option.OptionId,
                         Text(option.Title), Text(option.Description), !option.IsEnabled)).ToArray());
             case MapRoom:
-                // Next reachable nodes are exactly the current point's children: no hidden topology.
-                var point = run.CurrentMapPoint;
-                return new RoomView("Map", "地图", "选择下一层路线",
-                    point?.Children.OrderBy(child => child.PointType.ToString())
-                        .Select((child, index) => new RoomOptionView(index.ToString(), PointName(child.PointType), "可达节点", false))
-                        .ToArray() ?? []);
+                return MapView(run);
             default:
                 return null;
         }
+    }
+
+    /// <summary>Only the current point's children: reachable nodes, never the unexplored map.</summary>
+    private static RoomView MapView(RunState run)
+    {
+        var point = run.CurrentMapPoint ?? run.Map?.StartingMapPoint;
+        var options = point?.Children.OrderBy(child => child.PointType.ToString())
+            .Select((child, index) => new RoomOptionView(index.ToString(), PointName(child.PointType), "可达节点", false))
+            .ToArray() ?? [];
+        return new RoomView("Map", "地图", options.Length == 0 ? "当前没有可前进的节点" : "选择下一层路线", options);
     }
 
     private static (string Name, string Detail) Entry(MerchantEntry entry) => entry switch
