@@ -1,6 +1,7 @@
 """macOS isolated offline Mod-load smoke test. Does not open a real run or use Steam saves."""
 from pathlib import Path
 import json
+import re
 import secrets
 import shutil
 import subprocess
@@ -53,7 +54,24 @@ def main():
                     'not supported for conversion to/from Variant']
         if result.returncode != 0 or '[SpireCompanion] PANEL_READY' not in text or 'font_ready=True' not in text or any(item in text for item in failures):
             raise RuntimeError(f'Mod load smoke test failed; inspect {stage}')
-        print('PASS: isolated Mod initialization, panel creation and main-menu state read.')
+        layout = re.search(
+            r'PANEL_LAYOUT viewport=\(([\d.]+),([\d.]+)\) rect=\((-?[\d.]+),(-?[\d.]+),([\d.]+),([\d.]+)\)'
+            r' tabs=(\d+) titles=(\S*) current=(-?\d+) scroll=\(([\d.]+),([\d.]+)\)', text)
+        if layout is None:
+            raise RuntimeError(f'No PANEL_LAYOUT line: window geometry unknown; inspect {stage}')
+        vw, vh, x, y, w, h = (float(value) for value in layout.group(1, 2, 3, 4, 5, 6))
+        tab_count, titles = int(layout.group(7)), layout.group(8)
+        scroll_w, scroll_h = float(layout.group(10)), float(layout.group(11))
+        if w < 320 or h < 280 or x < 0 or y < 0 or x + w > vw + 1 or y + h > vh + 1:
+            raise RuntimeError(f'Window geometry outside viewport: rect=({x},{y},{w},{h}) viewport=({vw},{vh}); inspect {stage}')
+        if tab_count != 2 or titles != '聊天与API|游戏状态与控制':
+            raise RuntimeError(f'Unexpected tabs: count={tab_count} titles={titles}; inspect {stage}')
+        # The scroll body must fill the tab, not collapse to its minimum: that would leave dead space.
+        if scroll_h < h * 0.6 or scroll_w < w - 60:
+            raise RuntimeError(f'Scroll body not filled: scroll=({scroll_w},{scroll_h}) panel=({w},{h}); inspect {stage}')
+        print(f'PASS: isolated Mod initialization, panel creation and main-menu state read.')
+        print(f'Window: {w:.0f}x{h:.0f} at ({x:.0f},{y:.0f}) in viewport {vw:.0f}x{vh:.0f}, tabs={titles}')
+        print(f'Body: {scroll_w:.0f}x{scroll_h:.0f}')
         print('NOT VERIFIED: visible layout, fonts on screen, combat actions or actual CombatSolver handoff.')
         print(f'Evidence: {stage}')
         return 0
