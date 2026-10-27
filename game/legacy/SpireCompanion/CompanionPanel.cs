@@ -40,7 +40,10 @@ internal sealed class CompanionPanel
         // Use game fonts, never depend on operating-system font enumeration.
         panel.Theme = new Theme();
         UiStyle.Apply(panel.Theme);
-        panel.AddThemeStyleboxOverride("panel", UiStyle.Box(UiStyle.Background, UiStyle.Border, 20, 16));
+        var windowStyle = UiStyle.Box(UiStyle.Background, UiStyle.Border, 20, 16);
+        windowStyle.ShadowColor = new Color(0.42f, 0.26f, 0.04f, 0.18f);
+        windowStyle.ShadowSize = 10;
+        panel.AddThemeStyleboxOverride("panel", windowStyle);
 
         var layout = new VBoxContainer();
         layout.AddThemeConstantOverride("separation", 10);
@@ -60,15 +63,23 @@ internal sealed class CompanionPanel
             { dragging = true; dragOffset = title.GetGlobalMousePosition() - panel.Position; }
         };
         header.AddChild(title);
+        if (UiStyle.Avatar is { } face)
+            header.AddChild(new TextureRect
+            {
+                Texture = face, CustomMinimumSize = new Vector2(44, 44),
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered
+            });
         stateLabel = new Label { Text = "就绪", VerticalAlignment = VerticalAlignment.Center };
         stateLabel.AddThemeColorOverride("font_color", UiStyle.Good);
         header.AddChild(stateLabel);
-        var close = new Button { Text = "关闭" }; close.Pressed += () => panel.Hide(); header.AddChild(close);
+        var close = new Button { Text = "关闭" }; close.Pressed += () => panel.Hide();
+        UiStyle.Size(close, 40, 84); header.AddChild(close);
 
         tabs = new TabContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill }; layout.AddChild(tabs);
         chatScroll = Page("聊天", out var chatBody);
         settingsScroll = Page("设置", out var settingsBody);
         gameScroll = Page("游戏状态", out var body);
+        UiStyle.StyleTabs(tabs);
 
         var statusCard = UiStyle.Card(body, "当前局面");
         status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(0, 80) };
@@ -93,7 +104,12 @@ internal sealed class CompanionPanel
         chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
 
         layer.AddChild(panel);
-        toggle = new Button { Text = "AI 搭子", Position = new Vector2(16, 16), TooltipText = "显示或隐藏窗口（F9）", Theme = panel.Theme };
+        toggle = new Button
+        {
+            Text = "AI 搭子", Icon = UiStyle.SmallAvatar, Position = new Vector2(16, 16),
+            TooltipText = "显示或隐藏窗口（F9）", Theme = panel.Theme
+        };
+        UiStyle.Size(toggle, 44, 108);
         toggle.Pressed += () => panel.Visible = !panel.Visible;
         layer.AddChild(toggle);
         tree.Root.AddChild(layer);
@@ -183,7 +199,7 @@ internal sealed class CompanionPanel
             var path = Path.Combine(directory, $"state-{DateTime.UtcNow:yyyyMMdd-HHmmss-fffffff}.json");
             File.WriteAllText(path, JsonSerializer.Serialize(new { schema_version = 1, captured_at = DateTimeOffset.UtcNow,
                 fingerprint = fresh.Fingerprint, state = fresh }, new JsonSerializerOptions { WriteIndented = true }));
-            message = "已导出当前状态，文件位置见日志。";
+            message = $"已导出到 {path}";
             GD.Print($"[SpireCompanion] snapshot_saved path={path}");
         }
         catch (Exception error)
@@ -232,6 +248,11 @@ internal sealed class CompanionPanel
                 toggle.AddThemeFontOverride("font", font);
                 foreach (var type in new[] { "Button", "Label", "LineEdit", "TextEdit", "OptionButton", "CheckButton", "TabBar", "PopupMenu", "TooltipLabel" })
                     panel.Theme.SetFont("font", type, font);
+                // RichTextLabel uses its own font items; without these the reply falls back to the game's light theme font.
+                foreach (var name in new[] { "normal_font", "bold_font", "italics_font", "mono_font" })
+                    panel.Theme.SetFont(name, "RichTextLabel", font);
+                foreach (var name in new[] { "normal_font_size", "bold_font_size", "italics_font_size", "mono_font_size" })
+                    panel.Theme.SetFontSize(name, "RichTextLabel", 18);
             }
             SolverBridge.ObserveLifecycle();
             var next = GameReader.Read();
