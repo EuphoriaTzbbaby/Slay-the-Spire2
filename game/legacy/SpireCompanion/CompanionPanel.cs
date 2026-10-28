@@ -421,6 +421,11 @@ internal sealed class CompanionPanel
             }
             catch (Exception error)
             {
+                if (attempt == 0 && error is ModelReplyException)
+                {
+                    GD.PushWarning($"[SpireCompanion] auto_retry error={error.Message}");
+                    continue;
+                }
                 GD.PushError($"[SpireCompanion] auto_failed error={error.Message}");
                 mainQueue.Enqueue(() => StopAutoWith($"自动决策失败：{error.Message}"));
                 return;
