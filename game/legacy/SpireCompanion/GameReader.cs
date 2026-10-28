@@ -15,6 +15,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Map;
+using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -93,6 +94,15 @@ internal static class GameReader
     {
         // The map is an overlay that can be opened from any room, not only from MapRoom.
         if (NMapScreen.Instance is { IsOpen: true }) return MapView(run);
+        if (NOverlayStack.Instance?.Peek() is NCardGridSelectionScreen selectScreen)
+        {
+            var prompt = selectScreen.GetNodeOrNull<Godot.Label>("%BottomLabel")?.Text ?? "选择一张牌";
+            var cards = SortedGridHolders(selectScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
+            return new RoomView("Select", StripTags(prompt), "选中后需要确认", cards.Select((card, index) => new RoomOptionView(
+                index.ToString(), Text(card.Title),
+                $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
+                (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray());
+        }
         if (NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen rewardScreen)
         {
             var cards = SortedCardHolders(rewardScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
@@ -218,6 +228,36 @@ internal static class GameReader
             if (nested != null) return nested;
         }
         return null;
+    }
+
+    private static List<NGridCardHolder> SortedGridHolders(Godot.Node root) => FindAll<NGridCardHolder>(root)
+        .OrderBy(holder => holder.GlobalPosition.Y).ThenBy(holder => holder.GlobalPosition.X).ToList();
+
+    private static string StripTags(string value) =>
+        System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", "");
+
+    /// <summary>Toggles one card in a grid selection screen (upgrade, remove, transform).</summary>
+    public static void SelectGridCard(int index)
+    {
+        var screen = NOverlayStack.Instance?.Peek() as NCardGridSelectionScreen
+            ?? throw new InvalidOperationException("选牌界面已关闭。");
+        var holders = SortedGridHolders(screen);
+        if (index < 0 || index >= holders.Count) throw new InvalidOperationException("该卡牌已不在候选里。");
+        var grid = FindFirst<NCardGrid>(screen) ?? throw new InvalidOperationException("找不到选牌网格。");
+        grid.EmitSignal(NCardGrid.SignalName.HolderPressed, holders[index]);
+    }
+
+    public static bool CanConfirmSelection() =>
+        NOverlayStack.Instance?.Peek() is NCardGridSelectionScreen screen &&
+        FindAll<NConfirmButton>(screen).Any(button => button.IsEnabled && button.IsVisibleInTree());
+
+    public static void ConfirmSelection()
+    {
+        var screen = NOverlayStack.Instance?.Peek() as NCardGridSelectionScreen
+            ?? throw new InvalidOperationException("选牌界面已关闭。");
+        var confirm = FindAll<NConfirmButton>(screen).FirstOrDefault(button => button.IsEnabled && button.IsVisibleInTree())
+            ?? throw new InvalidOperationException("还没有可以确认的选牌。");
+        confirm.ForceClick();
     }
 
     /// <summary>Picks one reward card; the caller must have just shown the player the same index.</summary>
