@@ -269,9 +269,11 @@ internal static class GameReader
     private static (string Name, string Detail) Entry(MerchantEntry entry) => entry switch
     {
         MerchantCardEntry card when card.CreationResult?.Card is { } model =>
-            (Text(model.Title), $"{card.Cost} 金币{(card.IsOnSale ? " · 打折" : "")}{(card.IsStocked ? "" : " · 已售出")}"),
+            (Text(model.Title), $"{card.Cost} 金币{(card.IsOnSale ? " · 打折" : "")}{(card.IsStocked ? "" : " · 已售出")}：" +
+                Shorten(CardText(model), 100)),
         MerchantRelicEntry relic when relic.Model is { } model =>
-            (Text(model.Title), $"{relic.Cost} 金币{(relic.IsStocked ? "" : " · 已售出")}"),
+            (Text(model.Title), $"{relic.Cost} 金币{(relic.IsStocked ? "" : " · 已售出")}：" +
+                Shorten(Plain(Text(model.DynamicDescription)), 80)),
         MerchantPotionEntry potion when potion.Model is { } model =>
             (Text(model.Title), $"{potion.Cost} 金币{(potion.IsStocked ? "" : " · 已售出")}"),
         MerchantCardRemovalEntry removal => ("删牌服务", $"{removal.Cost} 金币{(removal.Used ? " · 已使用" : "")}"),
