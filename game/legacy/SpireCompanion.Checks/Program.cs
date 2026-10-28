@@ -61,6 +61,18 @@ Check("Solver stop cannot claim success while deployment is still active", () =>
     Require(rejected && adapter.Status().Deploying && adapter.Status().Description.Contains("正在停止"));
     FakeSolver.KeepDeploying=false;adapter.Stop();Require(!adapter.Status().Deploying);
 });
+Check("Window state persists the auto flag and survives a broken file", () => {
+    var path = Path.Combine(Path.GetTempPath(), "spire-window-" + Guid.NewGuid() + ".json");
+    try
+    {
+        Require(!WindowState.Load(path).AutoEnabled);
+        new WindowState(true).Save(path);
+        Require(WindowState.Load(path).AutoEnabled);
+        File.WriteAllText(path, "{broken");
+        Require(!WindowState.Load(path).AutoEnabled);
+    }
+    finally { if (File.Exists(path)) File.Delete(path); }
+});
 Check("Room options are part of the snapshot fingerprint", () => {
     var room = new RoomView("Event", "金色神像", "一座神像。", [new RoomOptionView("0", "祈祷", "获得最大生命", false)]);
     var a = new GameSnapshot("EventRoom", "铁甲战士", 60, 80, 99, [], "无", false, "") { Room = room };
