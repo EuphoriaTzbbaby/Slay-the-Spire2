@@ -111,8 +111,16 @@ internal static class GameReader
         if (NOverlayStack.Instance?.Peek() is NRewardsScreen rewardsScreen)
         {
             var buttons = FindAll<NRewardButton>(rewardsScreen).Where(button => button.Reward != null && button.IsEnabled).ToList();
-            var options = buttons.Select((button, index) => new RoomOptionView(index.ToString(),
-                RewardName(button.Reward!), Text(button.Reward!.Description), false)).ToList();
+            var state = run;
+            var me = state != null ? LocalContext.GetMe(state) : null;
+            var potionsFull = me != null && me.PotionSlots.All(slot => slot != null);
+            var options = buttons.Select((button, index) =>
+            {
+                var reward = button.Reward!;
+                var full = potionsFull && reward is PotionReward;
+                return new RoomOptionView(index.ToString(), RewardName(reward),
+                    Text(reward.Description) + (full ? "（药水栏已满，先丢弃一瓶）" : ""), full);
+            }).ToList();
             if (FindFirst<NProceedButton>(rewardsScreen)?.IsEnabled == true)
                 options.Add(new RoomOptionView("proceed", "离开奖励（继续）", "剩余奖励将放弃", false));
             return new RoomView("Rewards", "战斗奖励", "领取想要的东西，或离开", options.ToArray()) { Id = ScreenId(rewardsScreen) };
