@@ -25,7 +25,7 @@ internal sealed class CompanionPanel
     private CancellationTokenSource? autoCts;
     private string autoPending = "";
     private double autoWait;
-    private string autoActedRoom = "";
+    private string autoActedKey = "";
     private bool autoSelectPendingConfirm;
     private string windowStatePath = "";
     private Label autoLabel = null!;
@@ -116,7 +116,7 @@ internal sealed class CompanionPanel
         autoToggle.Pressed += ToggleAuto;
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
         controlCard.AddChild(autoToggle);
-        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励/休息点/商店/选牌界面里选一项并执行，每个界面只操作一次（选牌会自动确认）；战斗仍归求解器。"));
+        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励/休息点/商店/选牌/事件/地图里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。"));
         solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
         solverStart.Pressed += StartSolver;
         UiStyle.Primary(solverStart); UiStyle.Size(solverStart, 44);
@@ -228,7 +228,7 @@ internal sealed class CompanionPanel
     private void UpdateDecision(GameSnapshot next)
     {
         var room = next.Room;
-        if (room is null || room.Options.Length == 0 || room.Kind is not ("Reward" or "Rest" or "Shop" or "Select"))
+        if (room is null || room.Options.Length == 0 || room.Kind is not ("Reward" or "Rest" or "Shop" or "Select" or "Event" or "Map"))
         {
             decisionCard.Visible = false;
             decisionSignature = "";
@@ -247,6 +247,8 @@ internal sealed class CompanionPanel
                 case "Reward": BuildRewardButtons(room); break;
                 case "Rest": BuildRestButtons(room); break;
                 case "Select": BuildSelectButtons(room); break;
+                case "Event": BuildEventButtons(room); break;
+                case "Map": BuildMapButtons(room); break;
                 default: BuildShopButtons(room); break;
             }
             decisionStatus.Text = $"检测到 {room.Options.Length} 个可选项，点击后立即执行。";
@@ -281,7 +283,7 @@ internal sealed class CompanionPanel
         {
             var button = new Button { Text = $"选「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
             var id = option.Id;
-            button.Pressed += () => ExecuteRest(id);
+            button.Pressed += id == "proceed" ? ExecuteProceed : () => ExecuteRest(id);
             UiStyle.Secondary(button); UiStyle.Size(button, 42);
             decisionButtons.AddChild(button);
         }
@@ -306,13 +308,37 @@ internal sealed class CompanionPanel
         }
     }
 
+    private void BuildEventButtons(RoomView room)
+    {
+        foreach (var option in room.Options)
+        {
+            if (!int.TryParse(option.Id, out var index)) continue;
+            var button = new Button { Text = $"选「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
+            button.Pressed += () => ExecuteEvent(index);
+            UiStyle.Secondary(button); UiStyle.Size(button, 42);
+            decisionButtons.AddChild(button);
+        }
+    }
+
+    private void BuildMapButtons(RoomView room)
+    {
+        foreach (var option in room.Options)
+        {
+            if (!int.TryParse(option.Id, out var index)) continue;
+            var button = new Button { Text = $"前往「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
+            button.Pressed += () => ExecuteMap(index);
+            UiStyle.Secondary(button); UiStyle.Size(button, 42);
+            decisionButtons.AddChild(button);
+        }
+    }
+
     private void BuildShopButtons(RoomView room)
     {
         foreach (var option in room.Options)
         {
-            var button = new Button { Text = $"买「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
             var id = option.Id;
-            button.Pressed += () => ExecutePurchase(id);
+            var button = new Button { Text = id == "proceed" ? option.Name : $"买「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
+            button.Pressed += id == "proceed" ? ExecuteProceed : () => ExecutePurchase(id);
             UiStyle.Secondary(button); UiStyle.Size(button, 42);
             decisionButtons.AddChild(button);
         }
@@ -352,7 +378,7 @@ internal sealed class CompanionPanel
             ? "已开启局外自动操作：只在奖励、休息点、商店里替你点一次。"
             : "已关闭局外自动操作。";
         if (!autoEnabled) StopAuto();
-        else { autoActedRoom = ""; autoWait = 0; }
+        else { autoActedKey = ""; autoWait = 0; }
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
         new WindowState(autoEnabled).Save(windowStatePath);
         Refresh();
@@ -386,11 +412,12 @@ internal sealed class CompanionPanel
             }
             return;
         }
-        // One action per screen instance: leaving and re-entering the same screen must not re-trigger it.
-        if (room.Id.Length > 0 && room.Id == autoActedRoom) return;
+        // One action per screen state: identical options must not re-trigger, but a new dialogue page may.
+        var optionKey = room.Id + "|" + string.Join(",", room.Options.Select(option => option.Id + option.Name + option.Locked));
+        if (optionKey == autoActedKey) return;
         if (room.Kind is not ("Reward" or "Rest" or "Shop" or "Select")) return;
         if (room.Options.All(option => option.Locked)) return;
-        autoPending = room.Id + "|" + room.Kind;
+        autoPending = optionKey;
         autoCts = new CancellationTokenSource();
         autoCts.CancelAfter(TimeSpan.FromSeconds(30));
         if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
@@ -462,7 +489,7 @@ internal sealed class CompanionPanel
             message = "选项已失效，已丢弃这条自动决策。";
             return;
         }
-        autoActedRoom = room.Id;
+        autoActedKey = room.Id + "|" + string.Join(",", room.Options.Select(option => option.Id + option.Name + option.Locked));
         autoWait = 1.0;
         var chosen = room.Options.First(option => option.Id == id);
         var why = string.IsNullOrWhiteSpace(reason) ? "" : $"理由：{reason}";
@@ -472,8 +499,11 @@ internal sealed class CompanionPanel
         switch (room.Kind)
         {
             case "Reward" when int.TryParse(id, out var index): ExecuteReward(index); break;
+            case "Rest" or "Shop" when id == "proceed": ExecuteProceed(); break;
             case "Rest": ExecuteRest(id); break;
             case "Shop": ExecutePurchase(id); break;
+            case "Event" when int.TryParse(id, out var eventIndex): ExecuteEvent(eventIndex); break;
+            case "Map" when int.TryParse(id, out var mapIndex): ExecuteMap(mapIndex); break;
             case "Select" when int.TryParse(id, out var cardIndex):
                 autoSelectPendingConfirm = true;
                 autoWait = 0.4;
@@ -509,6 +539,45 @@ internal sealed class CompanionPanel
             message = $"确认失败：{error.Message}";
             decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] confirm_select: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecuteEvent(int index)
+    {
+        try { GameReader.SelectEventOption(index); message = "已选择该事件选项。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=event id={index} ok"); }
+        catch (Exception error)
+        {
+            message = $"事件选择失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] event_option: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecuteMap(int index)
+    {
+        try { GameReader.ChooseMapNode(index); message = "已选择路线，等待移动。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=map id={index} ok"); }
+        catch (Exception error)
+        {
+            message = $"选择路线失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] map_node: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecuteProceed()
+    {
+        try { GameReader.Proceed(); message = "已继续前进。"; decisionStatus.Text = message; GD.Print("[SpireCompanion] decision_result action=proceed ok"); }
+        catch (Exception error)
+        {
+            message = $"继续失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] proceed: {error}");
         }
         decisionSignature = "";
         Refresh();

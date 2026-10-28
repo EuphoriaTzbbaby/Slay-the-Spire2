@@ -17,12 +17,12 @@ using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
+using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
-using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -146,12 +146,14 @@ internal static class GameReader
                     {
                         var (name, detail) = Entry(entry);
                         return new RoomOptionView(index.ToString(), name, detail, !entry.IsStocked || !entry.EnoughGold);
-                    }).ToArray() ?? []) { Id = ScreenId(shop) };
+                    }).Append(LeaveOption(NMerchantRoom.Instance?.ProceedButton?.IsEnabled == true)).ToArray() ?? []) { Id = ScreenId(shop) };
             case RestSiteRoom rest:
                 return new RoomView("Rest", "休息点", "选择休息或升级",
                     rest.Options.Select((option, index) => new RoomOptionView(
                         string.IsNullOrEmpty(option.OptionId) ? index.ToString() : option.OptionId,
-                        Text(option.Title), Text(option.Description), !option.IsEnabled)).ToArray()) { Id = ScreenId(rest) };
+                        Text(option.Title), Text(option.Description), !option.IsEnabled))
+                    .Append(LeaveOption(NRestSiteRoom.Instance?.ProceedButton?.IsEnabled == true)).ToArray())
+                { Id = ScreenId(rest) };
             case MapRoom:
                 return MapView(run);
             default:
@@ -159,9 +161,15 @@ internal static class GameReader
         }
     }
 
-    /// <summary>Only the current point's children: reachable nodes, never the unexplored map.</summary>
+    /// <summary>Only reachable nodes. With the map open, use the travelable UI nodes so ids match click order.</summary>
     private static RoomView MapView(RunState run)
     {
+        var screen = NMapScreen.Instance;
+        if (screen is { IsOpen: true } && TravelableNodes(screen) is { Count: > 0 } travelable)
+            return new RoomView("Map", "地图", "选择下一层路线",
+                travelable.Select((node, index) => new RoomOptionView(index.ToString(),
+                    PointName(node.Point!.PointType), $"第 {node.Point.coord.col} 列", false)).ToArray())
+                { Id = ScreenId(screen) };
         var point = run.CurrentMapPoint ?? run.Map?.StartingMapPoint;
         var options = point?.Children.OrderBy(child => child.PointType.ToString())
             .Select((child, index) => new RoomOptionView(index.ToString(), PointName(child.PointType), "可达节点", false))
@@ -169,6 +177,10 @@ internal static class GameReader
         return new RoomView("Map", "地图", options.Length == 0 ? "当前没有可前进的节点" : "选择下一层路线", options)
             { Id = ScreenId(NMapScreen.Instance ?? (object)run) };
     }
+
+    private static List<NMapPoint> TravelableNodes(Godot.Node screen) => FindAll<NMapPoint>(screen)
+        .Where(node => node.State == MapPointState.Travelable && node.Point != null)
+        .OrderBy(node => node.Point!.coord.col).ToList();
 
     private static (string Name, string Detail) Entry(MerchantEntry entry) => entry switch
     {
@@ -250,10 +262,59 @@ internal static class GameReader
     private static List<NGridCardHolder> SortedGridHolders(Godot.Node root) => FindAll<NGridCardHolder>(root)
         .OrderBy(holder => holder.GlobalPosition.Y).ThenBy(holder => holder.GlobalPosition.X).ToList();
 
+    private static RoomOptionView LeaveOption(bool available) =>
+        new("proceed", "离开 / 继续前进", available ? "不在这里继续操作" : "当前还不能离开", !available);
+
     private static string ScreenId(object instance) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(instance).ToString();
 
     private static string StripTags(string value) =>
         System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", "");
+
+    public static void SelectEventOption(int index)
+    {
+        var room = NEventRoom.Instance ?? throw new InvalidOperationException("事件界面已关闭。");
+        var buttons = FindAll<NEventOptionButton>(room).ToList();
+        if (index < 0 || index >= buttons.Count) throw new InvalidOperationException("该事件选项已不在界面中。");
+        if (buttons[index].Option.IsLocked) throw new InvalidOperationException("该事件选项当前不可选。");
+        buttons[index].ForceClick();
+    }
+
+    public static void ChooseMapNode(int index)
+    {
+        var screen = NMapScreen.Instance ?? throw new InvalidOperationException("地图未打开。");
+        var travelable = TravelableNodes(screen);
+        if (index < 0 || index >= travelable.Count) throw new InvalidOperationException("该节点当前不可前往。");
+        screen.OnMapPointSelectedLocally(travelable[index]);
+    }
+
+    public static bool CanProceed()
+    {
+        if (NOverlayStack.Instance?.Peek() is NRewardsScreen rewards && FindAll<NProceedButton>(rewards).Any(button => button.IsEnabled)) return true;
+        if (NRestSiteRoom.Instance?.ProceedButton is { IsEnabled: true }) return true;
+        if (NMerchantRoom.Instance?.ProceedButton is { IsEnabled: true }) return true;
+        return false;
+    }
+
+    public static void Proceed()
+    {
+        if (NOverlayStack.Instance?.Peek() is NRewardsScreen rewards &&
+            FindAll<NProceedButton>(rewards).FirstOrDefault(button => button.IsEnabled) is { } rewardProceed)
+        {
+            rewardProceed.ForceClick();
+            return;
+        }
+        if (NRestSiteRoom.Instance?.ProceedButton is { IsEnabled: true } rest)
+        {
+            rest.ForceClick();
+            return;
+        }
+        if (NMerchantRoom.Instance?.ProceedButton is { IsEnabled: true } shop)
+        {
+            shop.ForceClick();
+            return;
+        }
+        throw new InvalidOperationException("当前界面没有可用的继续按钮。");
+    }
 
     /// <summary>Toggles one card in a grid selection screen (upgrade, remove, transform).</summary>
     public static void SelectGridCard(int index)
