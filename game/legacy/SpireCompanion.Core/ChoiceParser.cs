@@ -8,9 +8,13 @@ namespace SpireCompanion.Core;
 /// </summary>
 public static class ChoiceParser
 {
-    public static string? Parse(string reply, IReadOnlyCollection<string> allowed)
+    public static string? Parse(string reply, IReadOnlyCollection<string> allowed) =>
+        ParseWithReason(reply, allowed).Id;
+
+    /// <summary>Same validation as Parse, plus the short reason the model was asked to include.</summary>
+    public static (string? Id, string Reason) ParseWithReason(string reply, IReadOnlyCollection<string> allowed)
     {
-        if (string.IsNullOrWhiteSpace(reply) || allowed.Count == 0) return null;
+        if (string.IsNullOrWhiteSpace(reply) || allowed.Count == 0) return (null, "");
         var text = reply.Trim();
         if (text.StartsWith("```", StringComparison.Ordinal))
         {
@@ -39,13 +43,25 @@ public static class ChoiceParser
                             JsonValueKind.Number => value.GetRawText(),
                             _ => null
                         };
-                        if (id != null && allowed.Contains(id, StringComparer.Ordinal)) return id;
+                        if (id != null && allowed.Contains(id, StringComparer.Ordinal))
+                            return (id, Reason(json.RootElement));
                     }
                 }
             }
             catch (JsonException) { /* fall through to the plain-text check */ }
         }
         // Accept a bare id only; arbitrary prose must not be treated as a choice.
-        return allowed.Contains(text, StringComparer.Ordinal) ? text : null;
+        return allowed.Contains(text, StringComparer.Ordinal) ? (text, "") : (null, "");
+    }
+
+    private static string Reason(JsonElement root)
+    {
+        foreach (var property in new[] { "reason", "why", "explanation" })
+        {
+            if (!root.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.String) continue;
+            var text = value.GetString()?.Trim() ?? "";
+            return text.Length > 120 ? text[..120] : text;
+        }
+        return "";
     }
 }

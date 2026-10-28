@@ -174,6 +174,9 @@ internal static class ChatChecks
             Require(ChoiceParser.Parse("{\"id\":\"9\"}", allowed) == null);
             Require(ChoiceParser.Parse("我觉得选第一个", allowed) == null);
             Require(ChoiceParser.Parse("", allowed) == null);
+            var (id, reason) = ChoiceParser.ParseWithReason("{\"id\":\"1\",\"reason\":\"缺防御牌\"}", allowed);
+            Require(id == "1" && reason == "缺防御牌");
+            Require(ChoiceParser.ParseWithReason("{\"id\":\"9\",\"reason\":\"x\"}", allowed).Id == null);
             return Task.CompletedTask;
         });
         await Check("Markdown replies become BBCode and raw brackets are escaped", () =>
