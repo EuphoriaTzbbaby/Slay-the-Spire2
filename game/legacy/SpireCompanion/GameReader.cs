@@ -101,7 +101,7 @@ internal static class GameReader
             return new RoomView("Select", StripTags(prompt), "选中后需要确认", cards.Select((card, index) => new RoomOptionView(
                 index.ToString(), Text(card.Title),
                 $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray());
+                (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray()) { Id = ScreenId(selectScreen) };
         }
         if (NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen rewardScreen)
         {
@@ -110,7 +110,7 @@ internal static class GameReader
                 return new RoomView("Reward", "卡牌奖励", "选择一张加入牌组，或跳过",
                     cards.Select((card, index) => new RoomOptionView(index.ToString(), Text(card.Title),
                         $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                        (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray());
+                        (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray()) { Id = ScreenId(rewardScreen) };
         }
         switch (run.CurrentRoom)
         {
@@ -119,10 +119,10 @@ internal static class GameReader
                 try { model = eventRoom.LocalMutableEvent; }
                 catch (Exception error) { Godot.GD.PushWarning($"[SpireCompanion] event_state: {error.Message}"); }
                 model ??= eventRoom.CanonicalEvent;
-                if (model == null) return new RoomView("Event", "事件（内容未就绪）", "", []);
+                if (model == null) return new RoomView("Event", "事件（内容未就绪）", "", []) { Id = ScreenId(eventRoom) };
                 return new RoomView("Event", Text(model.Title), Text(model.Description),
                     model.CurrentOptions?.Select((option, index) => new RoomOptionView(
-                        index.ToString(), Text(option.Title), Text(option.Description), option.IsLocked)).ToArray() ?? []);
+                        index.ToString(), Text(option.Title), Text(option.Description), option.IsLocked)).ToArray() ?? []) { Id = ScreenId(eventRoom) };
             case MerchantRoom shop:
                 var inventory = shop.GetLocalInventory();
                 return new RoomView("Shop", "商店", "金币有限，先买最缺的",
@@ -130,12 +130,12 @@ internal static class GameReader
                     {
                         var (name, detail) = Entry(entry);
                         return new RoomOptionView(index.ToString(), name, detail, !entry.IsStocked || !entry.EnoughGold);
-                    }).ToArray() ?? []);
+                    }).ToArray() ?? []) { Id = ScreenId(shop) };
             case RestSiteRoom rest:
                 return new RoomView("Rest", "休息点", "选择休息或升级",
                     rest.Options.Select((option, index) => new RoomOptionView(
                         string.IsNullOrEmpty(option.OptionId) ? index.ToString() : option.OptionId,
-                        Text(option.Title), Text(option.Description), !option.IsEnabled)).ToArray());
+                        Text(option.Title), Text(option.Description), !option.IsEnabled)).ToArray()) { Id = ScreenId(rest) };
             case MapRoom:
                 return MapView(run);
             default:
@@ -150,7 +150,8 @@ internal static class GameReader
         var options = point?.Children.OrderBy(child => child.PointType.ToString())
             .Select((child, index) => new RoomOptionView(index.ToString(), PointName(child.PointType), "可达节点", false))
             .ToArray() ?? [];
-        return new RoomView("Map", "地图", options.Length == 0 ? "当前没有可前进的节点" : "选择下一层路线", options);
+        return new RoomView("Map", "地图", options.Length == 0 ? "当前没有可前进的节点" : "选择下一层路线", options)
+            { Id = ScreenId(NMapScreen.Instance ?? (object)run) };
     }
 
     private static (string Name, string Detail) Entry(MerchantEntry entry) => entry switch
@@ -233,6 +234,8 @@ internal static class GameReader
     private static List<NGridCardHolder> SortedGridHolders(Godot.Node root) => FindAll<NGridCardHolder>(root)
         .OrderBy(holder => holder.GlobalPosition.Y).ThenBy(holder => holder.GlobalPosition.X).ToList();
 
+    private static string ScreenId(object instance) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(instance).ToString();
+
     private static string StripTags(string value) =>
         System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", "");
 
@@ -292,5 +295,5 @@ internal static class GameReader
     private static CardView Card(CardModel card, int index, bool inHand) => new(index, card.Id.Entry, Text(card.Title),
         card.EnergyCost.CostsX ? "X" : inHand ? card.EnergyCost.GetAmountToSpend().ToString() : "未在手牌，不计算动态费用", card.IsUpgraded);
 
-    private static string Text(object value) => value is LocString loc ? loc.GetFormattedText() : value.ToString() ?? "未知";
+    private static string Text(object? value) => value == null ? "未知" : value is LocString loc ? loc.GetFormattedText() : value.ToString() ?? "未知";
 }

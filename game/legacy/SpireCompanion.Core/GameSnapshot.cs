@@ -8,7 +8,11 @@ public sealed record CardView(int Index, string Id, string Name, string Cost, bo
 public sealed record ItemView(int Index, string Id, string Name);
 public sealed record EnemyView(int Index, string Id, string Name, int Hp, int MaxHp, int Block);
 public sealed record RoomOptionView(string Id, string Name, string Detail, bool Locked);
-public sealed record RoomView(string Kind, string Title, string Description, RoomOptionView[] Options);
+public sealed record RoomView(string Kind, string Title, string Description, RoomOptionView[] Options)
+{
+    /// <summary>Runtime identity of the screen that produced this room; stable for one visit.</summary>
+    public string Id { get; init; } = "";
+}
 
 public sealed record GameSnapshot(string Scene, string Character, int Hp, int MaxHp, int Gold,
     string[] Hand, string CombatTurn, bool CanEndTurn, string BlockReason, string Revision = "")
