@@ -105,7 +105,10 @@ internal static class GameReader
         if (NMapScreen.Instance is { IsOpen: true }) return MapView(run);
         if (NOverlayStack.Instance?.Peek() is NCardGridSelectionScreen selectScreen)
         {
-            var prompt = selectScreen.GetNodeOrNull<Godot.Label>("%BottomLabel")?.Text ?? "选择一张牌";
+            // The prompt may be a Label or a RichTextLabel; read the "text" property generically.
+            var promptNode = selectScreen.GetNodeOrNull<Godot.Control>("%BottomLabel");
+            var prompt = promptNode?.Get("text").AsString() ?? "";
+            if (string.IsNullOrWhiteSpace(prompt)) prompt = "选择一张牌";
             var cards = SortedGridHolders(selectScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
             var options = RoomOptions.MergeDuplicates(cards.Select((card, index) => new RoomOptionView(
                 index.ToString(), Text(card.Title),
