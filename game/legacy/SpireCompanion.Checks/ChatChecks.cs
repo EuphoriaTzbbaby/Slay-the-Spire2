@@ -220,6 +220,8 @@ internal static class ChatChecks
             Require(ScreenPrompt.RequiredCards("选择2张牌来移除") == 2);
             Require(ScreenPrompt.RequiredCards("选择两张牌来升级") == 2);
             Require(ScreenPrompt.RequiredCards("Choose 3 cards to remove") == 3);
+            Require(ScreenPrompt.RequiredCards("选择[blue]2[/blue]张普通牌加入到你的[gold]牌组[/gold]") == 2);
+            Require(ScreenPrompt.RequiredCards("从8张随机普通牌中选择2张加入到你的牌组") == 2);
             Require(ScreenPrompt.RequiredCards("") == 1);
             return Task.CompletedTask;
         });
