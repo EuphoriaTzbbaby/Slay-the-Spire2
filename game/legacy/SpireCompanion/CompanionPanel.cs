@@ -30,6 +30,9 @@ internal sealed class CompanionPanel
     private string autoPending = "";
     private string[] autoPendingIds = [];
     private int autoActionFails;
+    private string pendingShopId = "";
+    private string pendingShopName = "";
+    private double pendingShopWait;
     private double autoWait;
     private string autoActedKey = "";
     private bool autoSelectPendingConfirm;
@@ -214,6 +217,22 @@ internal sealed class CompanionPanel
         }
         autoWait = Math.Max(0, autoWait - delta);
         solverRetry = Math.Max(0, solverRetry - delta);
+        if (pendingShopId.Length > 0)
+        {
+            pendingShopWait -= delta;
+            if (pendingShopWait <= 0)
+            {
+                var id = pendingShopId;
+                var name = pendingShopName;
+                pendingShopId = "";
+                var shopNow = GameReader.Read().Room;
+                var stillThere = shopNow is { Kind: "Shop" } && int.TryParse(id, out var slot) &&
+                    slot >= 0 && slot < shopNow.Options.Length && shopNow.Options[slot].Name == name;
+                if (stillThere) ExecutePurchase(id);
+                else { message = "商店已经变化，这次购买取消。"; decisionStatus.Text = message; autoActedKey = ""; }
+
+            }
+        }
         bool pressed = Input.IsPhysicalKeyPressed(Key.F9);
         if (pressed && !f9Down) panel.Visible = !panel.Visible;
         f9Down = pressed;
@@ -502,6 +521,7 @@ internal sealed class CompanionPanel
             return;
         }
         var room = next.Room;
+        if (room is null || room.Kind != "Shop") pendingShopId = "";
         if (room is null) { autoSelectPendingConfirm = false; return; }
         if (room.Kind != "Select") { autoSelectPendingConfirm = false; autoPendingIds = []; }
         if (autoSelectPendingConfirm)
@@ -641,7 +661,13 @@ internal sealed class CompanionPanel
             case "Reward" when int.TryParse(id, out var index): ExecuteReward(index); break;
             case "Rest" or "Shop" when id == "proceed": ExecuteProceed(); break;
             case "Rest": ExecuteRest(id); break;
-            case "Shop": ExecutePurchase(id); break;
+            case "Shop":
+                pendingShopId = id;
+                pendingShopName = chosen.Name;
+                pendingShopWait = 1.8;
+                chat.Notify($"准备买「{chosen.Name}」，{pendingShopWait:0.0} 秒后执行，让你先看清楚。");
+                decisionStatus.Text = $"即将购买「{chosen.Name}」…";
+                return;
             case "Event" when int.TryParse(id, out var eventIndex): ExecuteEvent(eventIndex); break;
             case "Map" when int.TryParse(id, out var mapIndex): ExecuteMap(mapIndex); break;
             case "Treasure" when id == "open": ExecuteOpenTreasure(); break;
