@@ -17,6 +17,9 @@ using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -91,7 +94,7 @@ internal static class GameReader
         if (NMapScreen.Instance is { IsOpen: true }) return MapView(run);
         if (NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen rewardScreen)
         {
-            var cards = CardHolders(rewardScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
+            var cards = SortedCardHolders(rewardScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
             if (cards.Length > 0)
                 return new RoomView("Reward", "卡牌奖励", "选择一张加入牌组，或跳过",
                     cards.Select((card, index) => new RoomOptionView(index.ToString(), Text(card.Title),
@@ -162,6 +165,45 @@ internal static class GameReader
         MapPointType.Ancient => "远古",
         _ => "未知"
     };
+
+    /// <summary>Visual order, because the reward screen's tree order is not the order the player sees.</summary>
+    private static List<NCardHolder> SortedCardHolders(Godot.Node root) => CardHolders(root)
+        .OrderBy(holder => holder.GlobalPosition.Y).ThenBy(holder => holder.GlobalPosition.X).ToList();
+
+    public static bool CanSkipReward() =>
+        NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen screen && SkipButton(screen) != null;
+
+    private static NCardRewardAlternativeButton? SkipButton(Godot.Node root) => FindFirst<NCardRewardAlternativeButton>(root);
+
+    private static T? FindFirst<T>(Godot.Node node) where T : Godot.Node
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is T match) return match;
+            var nested = FindFirst<T>(child);
+            if (nested != null) return nested;
+        }
+        return null;
+    }
+
+    /// <summary>Picks one reward card; the caller must have just shown the player the same index.</summary>
+    public static void SelectReward(int index)
+    {
+        var screen = NOverlayStack.Instance?.Peek() as NCardRewardSelectionScreen
+            ?? throw new InvalidOperationException("卡牌奖励界面已关闭，请重新选择。");
+        var holders = SortedCardHolders(screen);
+        if (index < 0 || index >= holders.Count) throw new InvalidOperationException("该卡牌已不在奖励中。");
+        var holder = holders[index];
+        holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
+    }
+
+    public static void SkipReward()
+    {
+        var screen = NOverlayStack.Instance?.Peek() as NCardRewardSelectionScreen
+            ?? throw new InvalidOperationException("卡牌奖励界面已关闭，请重新选择。");
+        var button = SkipButton(screen) ?? throw new InvalidOperationException("这个奖励没有跳过选项。");
+        button.ForceClick();
+    }
 
     // The card reward screen exposes cards only through its holders; there is no model list to read.
     private static IEnumerable<NCardHolder> CardHolders(Godot.Node node)
