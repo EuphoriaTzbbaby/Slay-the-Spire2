@@ -28,6 +28,8 @@ internal sealed class CompanionPanel
     private double autoWait;
     private string autoArmedKind = "";
     private bool autoSelectPendingConfirm;
+    private string windowStatePath = "";
+    private Label autoLabel = null!;
     private PanelContainer decisionCard = null!;
     private VBoxContainer decisionButtons = null!;
     private Label decisionStatus = null!;
@@ -82,6 +84,9 @@ internal sealed class CompanionPanel
         stateLabel = new Label { Text = "就绪", VerticalAlignment = VerticalAlignment.Center };
         stateLabel.AddThemeColorOverride("font_color", UiStyle.Good);
         header.AddChild(stateLabel);
+        autoLabel = new Label { Text = "自动：关", VerticalAlignment = VerticalAlignment.Center };
+        autoLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
+        header.AddChild(autoLabel);
         var close = new Button { Text = "关闭" }; close.Pressed += () => panel.Hide();
         UiStyle.Size(close, 40, 84); header.AddChild(close);
 
@@ -106,7 +111,9 @@ internal sealed class CompanionPanel
         status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(0, 80) };
         statusCard.AddChild(status);
         var controlCard = UiStyle.Card(body, "托管与求解器");
-        autoToggle = new Button { Text = "局外自动操作：关" };
+        windowStatePath = Path.Combine(ProjectSettings.GlobalizePath("user://spire-companion"), "window-state.json");
+        autoEnabled = WindowState.Load(windowStatePath).AutoEnabled;
+        autoToggle = new Button { Text = autoEnabled ? "局外自动操作：开" : "局外自动操作：关" };
         autoToggle.Pressed += ToggleAuto;
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
         controlCard.AddChild(autoToggle);
@@ -138,6 +145,7 @@ internal sealed class CompanionPanel
         UiStyle.Size(toggle, 44, 108);
         toggle.Pressed += () => panel.Visible = !panel.Visible;
         layer.AddChild(toggle);
+        autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
         tree.Root.AddChild(layer);
         tree.ProcessFrame += () => Tick(tree.Root.GetProcessDeltaTime());
         tree.Root.TreeExiting += () =>
@@ -346,6 +354,8 @@ internal sealed class CompanionPanel
             : "已关闭局外自动操作。";
         if (!autoEnabled) StopAuto();
         else { autoDone = ""; autoWait = 0; }
+        autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
+        new WindowState(autoEnabled).Save(windowStatePath);
         Refresh();
     }
 
@@ -353,6 +363,8 @@ internal sealed class CompanionPanel
     {
         autoEnabled = false;
         if (autoToggle != null) autoToggle.Text = "局外自动操作：关";
+        if (autoLabel != null) autoLabel.Text = "自动：关";
+        if (windowStatePath.Length > 0) new WindowState(false).Save(windowStatePath);
         autoPending = "";
         autoCts?.Cancel();
         autoCts = null;
