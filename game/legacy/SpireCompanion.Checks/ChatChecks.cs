@@ -165,6 +165,17 @@ internal static class ChatChecks
             var shop = snapshot with { Room = new RoomView("Shop", "商店", "", [new RoomOptionView("0", "打击", "50 金币", false)]) };
             Require(!string.IsNullOrWhiteSpace(await client.AskAsync(settings, "test-secret", "买什么", shop, [], default)));
         });
+        await Check("Structured choice accepts only offered ids", () =>
+        {
+            string[] allowed = ["0", "1", "SMITH"];
+            Require(ChoiceParser.Parse("{\"id\":\"1\"}", allowed) == "1");
+            Require(ChoiceParser.Parse("```json\n{\"id\":\"SMITH\"}\n```", allowed) == "SMITH");
+            Require(ChoiceParser.Parse("0", allowed) == "0");
+            Require(ChoiceParser.Parse("{\"id\":\"9\"}", allowed) == null);
+            Require(ChoiceParser.Parse("我觉得选第一个", allowed) == null);
+            Require(ChoiceParser.Parse("", allowed) == null);
+            return Task.CompletedTask;
+        });
         await Check("Markdown replies become BBCode and raw brackets are escaped", () =>
         {
             var text = ChatMarkdown.ToBbcode("**结论**：先防御。\n- 打 `打击`\n# 标题\n[链接](https://example.com)\n```\ncode\n```\n数值 [2]");

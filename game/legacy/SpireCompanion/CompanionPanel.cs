@@ -20,6 +20,13 @@ internal sealed class CompanionPanel
     private bool dragging;
     private Vector2 dragOffset;
     private Button pause = null!;
+    private Button autoToggle = null!;
+    private bool autoEnabled;
+    private CancellationTokenSource? autoCts;
+    private string autoPending = "";
+    private string autoDone = "";
+    private double autoWait;
+    private string autoArmedKind = "";
     private PanelContainer decisionCard = null!;
     private VBoxContainer decisionButtons = null!;
     private Label decisionStatus = null!;
@@ -98,6 +105,11 @@ internal sealed class CompanionPanel
         status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(0, 80) };
         statusCard.AddChild(status);
         var controlCard = UiStyle.Card(body, "托管与求解器");
+        autoToggle = new Button { Text = "局外自动操作：关" };
+        autoToggle.Pressed += ToggleAuto;
+        UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
+        controlCard.AddChild(autoToggle);
+        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励/休息点/商店里选一项并执行，每个界面只操作一次；战斗执行仍归求解器。"));
         solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
         solverStart.Pressed += StartSolver;
         UiStyle.Primary(solverStart); UiStyle.Size(solverStart, 44);
@@ -129,6 +141,7 @@ internal sealed class CompanionPanel
         tree.ProcessFrame += () => Tick(tree.Root.GetProcessDeltaTime());
         tree.Root.TreeExiting += () =>
         {
+            autoCts?.Cancel();
             chat.Dispose();
             try { SolverBridge.StopOwned(); }
             catch (Exception error) { GD.PushError($"[SpireCompanion] shutdown_stop: {error}"); }
@@ -174,6 +187,7 @@ internal sealed class CompanionPanel
                 $"scroll=({chatScroll.Size.X},{chatScroll.Size.Y}) page=({page?.Size.X},{page?.Size.Y}) " +
                 $"font_ready={panel.Theme.DefaultFont != null} visible={panel.Visible}");
         }
+        autoWait = Math.Max(0, autoWait - delta);
         bool pressed = Input.IsPhysicalKeyPressed(Key.F9);
         if (pressed && !f9Down) panel.Visible = !panel.Visible;
         f9Down = pressed;
@@ -300,6 +314,94 @@ internal sealed class CompanionPanel
         Refresh();
     }
 
+    private void ToggleAuto()
+    {
+        autoEnabled = !autoEnabled;
+        autoToggle.Text = autoEnabled ? "局外自动操作：开" : "局外自动操作：关";
+        message = autoEnabled
+            ? "已开启局外自动操作：只在奖励、休息点、商店里替你点一次。"
+            : "已关闭局外自动操作。";
+        if (!autoEnabled) StopAuto();
+        else { autoDone = ""; autoWait = 0; }
+        Refresh();
+    }
+
+    private void StopAuto()
+    {
+        autoEnabled = false;
+        if (autoToggle != null) autoToggle.Text = "局外自动操作：关";
+        autoPending = "";
+        autoCts?.Cancel();
+        autoCts = null;
+    }
+
+    /// <summary>Auto mode only ever acts on an executable screen, one decision per observed state.</summary>
+    private void AutoStep(GameSnapshot next)
+    {
+        if (!autoEnabled || SolverBridge.Owned || autoPending.Length > 0 || autoWait > 0) return;
+        var room = next.Room;
+        if (room is null) { autoArmedKind = ""; return; }
+        if (room.Kind != autoArmedKind) autoArmedKind = "";
+        // One action per screen visit: a shop should not drain the purse on its own.
+        if (room.Kind == autoArmedKind) return;
+        if (room.Kind is not ("Reward" or "Rest" or "Shop")) return;
+        if (room.Options.All(option => option.Locked)) return;
+        var key = next.Fingerprint + "|" + room.Kind;
+        if (key == autoDone) return;
+        autoPending = key;
+        autoCts = new CancellationTokenSource();
+        _ = DecideAsync(next, room.Options, autoCts.Token);
+    }
+
+    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, CancellationToken token)
+    {
+        try
+        {
+            var reply = await chat.DecideAsync(snapshot, options, token).ConfigureAwait(false);
+            var id = ChoiceParser.Parse(reply, options.Select(option => option.Id).ToArray());
+            mainQueue.Enqueue(() => ApplyAuto(snapshot.Fingerprint, id));
+        }
+        catch (OperationCanceledException) { mainQueue.Enqueue(() => autoPending = ""); }
+        catch (Exception error)
+        {
+            mainQueue.Enqueue(() =>
+            {
+                autoPending = "";
+                message = $"自动决策失败：{error.Message}";
+                StopAuto();
+            });
+        }
+    }
+
+    private void ApplyAuto(string fingerprint, string? id)
+    {
+        autoPending = "";
+        if (!autoEnabled) return;
+        if (id == null)
+        {
+            StopAuto();
+            message = "自动决策未返回合法选项，已停止自动操作。";
+            return;
+        }
+        var fresh = GameReader.Read();
+        if (fresh.Fingerprint != fingerprint) { message = "状态已变化，已丢弃这条自动决策。"; return; }
+        var room = fresh.Room;
+        if (room is null || !room.Options.Any(option => option.Id == id && !option.Locked))
+        {
+            message = "选项已失效，已丢弃这条自动决策。";
+            return;
+        }
+        autoDone = fingerprint + "|" + room.Kind;
+        autoArmedKind = room.Kind;
+        autoWait = 1.0;
+        switch (room.Kind)
+        {
+            case "Reward" when int.TryParse(id, out var index): ExecuteReward(index); break;
+            case "Rest": ExecuteRest(id); break;
+            case "Shop": ExecutePurchase(id); break;
+        }
+    }
+
     private void ExecuteReward(int index)
     {
         try { GameReader.SelectReward(index); message = "已选择奖励卡牌。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=reward id={index} ok"); }
@@ -327,6 +429,7 @@ internal sealed class CompanionPanel
 
     private void PauseAll()
     {
+        StopAuto();
         chat.Cancel();
         try { SolverBridge.StopOwned(); message = "本模块已暂停，已接管的求解器也已停止。"; }
         catch (Exception error)
@@ -339,6 +442,7 @@ internal sealed class CompanionPanel
 
     private void StartSolver()
     {
+        StopAuto();
         try { SolverBridge.Start(); message = "已交给 CombatSolver；暂停按钮可停止接管。"; }
         catch (Exception error)
         {
@@ -371,6 +475,7 @@ internal sealed class CompanionPanel
             var next = GameReader.Read();
             var solver = SolverBridge.Status();
             UpdateDecision(next);
+            AutoStep(next);
             stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "只读建议";
             stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : UiStyle.Good);
             status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n阶段：{(next.CanEndTurn ? "可操作" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";

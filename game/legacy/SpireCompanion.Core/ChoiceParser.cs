@@ -1,0 +1,51 @@
+using System.Text.Json;
+
+namespace SpireCompanion.Core;
+
+/// <summary>
+/// Turns the model's reply into a legal option id. Auto-execution must never act on a
+/// guessed value, so anything that is not an exact offer id is rejected.
+/// </summary>
+public static class ChoiceParser
+{
+    public static string? Parse(string reply, IReadOnlyCollection<string> allowed)
+    {
+        if (string.IsNullOrWhiteSpace(reply) || allowed.Count == 0) return null;
+        var text = reply.Trim();
+        if (text.StartsWith("```", StringComparison.Ordinal))
+        {
+            // Strip a fenced block without caring about the language tag.
+            var firstBreak = text.IndexOf('\n');
+            if (firstBreak > 0) text = text[(firstBreak + 1)..];
+            var lastFence = text.LastIndexOf("```", StringComparison.Ordinal);
+            if (lastFence >= 0) text = text[..lastFence];
+            text = text.Trim();
+        }
+        var start = text.IndexOf('{');
+        var end = text.LastIndexOf('}');
+        if (start >= 0 && end > start)
+        {
+            try
+            {
+                using var json = JsonDocument.Parse(text[start..(end + 1)]);
+                if (json.RootElement.ValueKind == JsonValueKind.Object)
+                {
+                    foreach (var property in new[] { "id", "choice", "option" })
+                    {
+                        if (!json.RootElement.TryGetProperty(property, out var value)) continue;
+                        var id = value.ValueKind switch
+                        {
+                            JsonValueKind.String => value.GetString(),
+                            JsonValueKind.Number => value.GetRawText(),
+                            _ => null
+                        };
+                        if (id != null && allowed.Contains(id, StringComparer.Ordinal)) return id;
+                    }
+                }
+            }
+            catch (JsonException) { /* fall through to the plain-text check */ }
+        }
+        // Accept a bare id only; arbitrary prose must not be treated as a choice.
+        return allowed.Contains(text, StringComparer.Ordinal) ? text : null;
+    }
+}
