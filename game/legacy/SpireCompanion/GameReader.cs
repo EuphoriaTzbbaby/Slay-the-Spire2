@@ -226,9 +226,14 @@ internal static class GameReader
                 if (inventory == null || NMerchantRoom.Instance?.Inventory?.IsOpen != true)
                     return new RoomView("Shop", "商店", "先打开商店界面", [new RoomOptionView("open", "查看商品", "打开商店界面", false), proceed])
                         { Id = ScreenId(shop) };
+                var shopState = run;
+                var shopMe = shopState != null ? LocalContext.GetMe(shopState) : null;
+                var potionsFull = shopMe != null && shopMe.PotionSlots.All(slot => slot != null);
                 var items = inventory.AllEntries.Select((entry, index) =>
                 {
                     var (name, detail) = Entry(entry);
+                    if (entry is MerchantPotionEntry && potionsFull)
+                        detail += "（药水栏已满，将替换最右侧）";
                     return new RoomOptionView(index.ToString(), name, detail, !entry.IsStocked || !entry.EnoughGold);
                 }).ToList();
                 items.Add(new RoomOptionView("close", "关闭商品界面", "关闭后才能离开商店", false));
@@ -336,8 +341,23 @@ internal static class GameReader
             ?? throw new InvalidOperationException("商品已下架，请重新打开商店。");
         if (!entry.IsStocked) throw new InvalidOperationException("这件商品已售出。");
         if (!entry.EnoughGold) throw new InvalidOperationException($"金币不足：需要 {entry.Cost}。");
+        var inventory = room.GetLocalInventory() ?? throw new InvalidOperationException("商店库存未就绪。");
+        if (entry is MerchantPotionEntry)
+        {
+            var run = RunManager.Instance.DebugOnlyGetState();
+            var player = run != null ? LocalContext.GetMe(run) : null;
+            if (player != null && player.PotionSlots.All(slot => slot != null))
+            {
+                // Buying a potion with a full belt would stall on the game's discard prompt.
+                var slot = Enumerable.Range(0, player.PotionSlots.Count).Last(i => player.PotionSlots[i] != null);
+                var potion = player.PotionSlots[slot] ?? throw new InvalidOperationException("药水栏读取失败。");
+                Godot.GD.Print("[SpireCompanion] shop_potion_replace");
+                _ = DiscardThenPurchase(potion, inventory, entry);
+                return;
+            }
+        }
         // Fire and forget, same call the game's own purchase button uses.
-        _ = entry.OnTryPurchaseWrapper(room.GetLocalInventory()!);
+        _ = entry.OnTryPurchaseWrapper(inventory);
     }
 
     public static bool CanSkipReward() =>
@@ -414,6 +434,24 @@ internal static class GameReader
             }
         }
         button.ForceClick();
+    }
+
+    private static async Task DiscardThenPurchase(PotionModel potion, MerchantInventory inventory, MerchantEntry entry)
+    {
+        try { await PotionCmd.Discard(potion); }
+        catch (Exception error)
+        {
+            Godot.GD.PushError($"[SpireCompanion] shop_potion_discard: {error.Message}");
+            return;
+        }
+        Godot.Callable.From(() =>
+        {
+            try
+            {
+                if (entry.IsStocked && entry.EnoughGold) _ = entry.OnTryPurchaseWrapper(inventory);
+            }
+            catch (Exception error) { Godot.GD.PushError($"[SpireCompanion] shop_potion_buy: {error.Message}"); }
+        }).CallDeferred();
     }
 
     private static async Task DiscardThenClaim(PotionModel potion, NRewardButton button)
