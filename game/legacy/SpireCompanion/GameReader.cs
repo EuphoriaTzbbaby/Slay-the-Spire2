@@ -18,6 +18,7 @@ using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
@@ -170,10 +171,42 @@ internal static class GameReader
     private static List<NCardHolder> SortedCardHolders(Godot.Node root) => CardHolders(root)
         .OrderBy(holder => holder.GlobalPosition.Y).ThenBy(holder => holder.GlobalPosition.X).ToList();
 
+    /// <summary>Rest site buttons carry the model option, so match by id instead of trusting list order.</summary>
+    public static void SelectRestOption(string optionId)
+    {
+        var room = NRestSiteRoom.Instance ?? throw new InvalidOperationException("休息点界面已关闭。");
+        var button = FindAll<NRestSiteButton>(room).FirstOrDefault(candidate => candidate.Option.OptionId == optionId)
+            ?? throw new InvalidOperationException("该选项已不在休息点界面中。");
+        if (!button.Option.IsEnabled) throw new InvalidOperationException("该选项当前不可用。");
+        button.ForceClick();
+    }
+
+    public static void Purchase(string entryId)
+    {
+        if (!int.TryParse(entryId, out var index)) throw new InvalidOperationException("商品编号无效。");
+        var room = RunManager.Instance.DebugOnlyGetState()?.CurrentRoom as MerchantRoom
+            ?? throw new InvalidOperationException("当前不在商店。");
+        var entry = room.GetLocalInventory()?.AllEntries.ElementAtOrDefault(index)
+            ?? throw new InvalidOperationException("商品已下架，请重新打开商店。");
+        if (!entry.IsStocked) throw new InvalidOperationException("这件商品已售出。");
+        if (!entry.EnoughGold) throw new InvalidOperationException($"金币不足：需要 {entry.Cost}。");
+        // Fire and forget, same call the game's own purchase button uses.
+        _ = entry.OnTryPurchaseWrapper(room.GetLocalInventory()!);
+    }
+
     public static bool CanSkipReward() =>
         NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen screen && SkipButton(screen) != null;
 
     private static NCardRewardAlternativeButton? SkipButton(Godot.Node root) => FindFirst<NCardRewardAlternativeButton>(root);
+
+    private static IEnumerable<T> FindAll<T>(Godot.Node node) where T : Godot.Node
+    {
+        foreach (var child in node.GetChildren())
+        {
+            if (child is T match) yield return match;
+            foreach (var nested in FindAll<T>(child)) yield return nested;
+        }
+    }
 
     private static T? FindFirst<T>(Godot.Node node) where T : Godot.Node
     {

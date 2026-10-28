@@ -98,7 +98,7 @@ internal sealed class CompanionPanel
 
         var decisionBody = UiStyle.Card(body, "可以执行", out decisionCard);
         decisionCard.Visible = false;
-        decisionBody.AddChild(UiStyle.Hint("只执行你点下的选择，不会自动选。"));
+        decisionBody.AddChild(UiStyle.Hint("只执行你点下的选择，不会自动选或自动购买。"));
         decisionButtons = new VBoxContainer();
         decisionButtons.AddThemeConstantOverride("separation", 6);
         decisionBody.AddChild(decisionButtons);
@@ -200,34 +200,94 @@ internal sealed class CompanionPanel
     /// <summary>Offer executable choices only for screens we can actually act on.</summary>
     private void UpdateDecision(GameSnapshot next)
     {
-        if (next.Room is not { Kind: "Reward" } room || room.Options.Length == 0)
+        var room = next.Room;
+        if (room is null || room.Options.Length == 0 || room.Kind is not ("Reward" or "Rest" or "Shop"))
         {
             decisionCard.Visible = false;
             decisionSignature = "";
             return;
         }
-        var signature = next.Fingerprint + "|" + string.Join("|", room.Options.Select(option => option.Name));
+        var signature = next.Fingerprint + "|" + room.Kind + "|" +
+            string.Join("|", room.Options.Select(option => option.Id + option.Name + option.Locked));
         if (signature != decisionSignature)
         {
             decisionSignature = signature;
             foreach (var child in decisionButtons.GetChildren()) child.Free();
-            foreach (var option in room.Options)
+            switch (room.Kind)
             {
-                if (!int.TryParse(option.Id, out var index)) continue;
-                var button = new Button { Text = $"选「{option.Name}」 · {option.Detail}" };
-                button.Pressed += () => ExecuteReward(index);
-                UiStyle.Secondary(button); UiStyle.Size(button, 42);
-                decisionButtons.AddChild(button);
-            }
-            if (GameReader.CanSkipReward())
-            {
-                var skip = new Button { Text = "跳过这张奖励" };
-                skip.Pressed += ExecuteSkipReward;
-                UiStyle.Ghost(skip); UiStyle.Size(skip, 40);
-                decisionButtons.AddChild(skip);
+                case "Reward": BuildRewardButtons(room); break;
+                case "Rest": BuildRestButtons(room); break;
+                default: BuildShopButtons(room); break;
             }
         }
         decisionCard.Visible = true;
+    }
+
+    private void BuildRewardButtons(RoomView room)
+    {
+        foreach (var option in room.Options)
+        {
+            if (!int.TryParse(option.Id, out var index)) continue;
+            var button = new Button { Text = $"选「{option.Name}」 · {option.Detail}" };
+            button.Pressed += () => ExecuteReward(index);
+            UiStyle.Secondary(button); UiStyle.Size(button, 42);
+            decisionButtons.AddChild(button);
+        }
+        if (GameReader.CanSkipReward())
+        {
+            var skip = new Button { Text = "跳过这张奖励" };
+            skip.Pressed += ExecuteSkipReward;
+            UiStyle.Ghost(skip); UiStyle.Size(skip, 40);
+            decisionButtons.AddChild(skip);
+        }
+    }
+
+    private void BuildRestButtons(RoomView room)
+    {
+        foreach (var option in room.Options)
+        {
+            var button = new Button { Text = $"选「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
+            var id = option.Id;
+            button.Pressed += () => ExecuteRest(id);
+            UiStyle.Secondary(button); UiStyle.Size(button, 42);
+            decisionButtons.AddChild(button);
+        }
+    }
+
+    private void BuildShopButtons(RoomView room)
+    {
+        foreach (var option in room.Options)
+        {
+            var button = new Button { Text = $"买「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
+            var id = option.Id;
+            button.Pressed += () => ExecutePurchase(id);
+            UiStyle.Secondary(button); UiStyle.Size(button, 42);
+            decisionButtons.AddChild(button);
+        }
+    }
+
+    private void ExecuteRest(string optionId)
+    {
+        try { GameReader.SelectRestOption(optionId); message = "已选择该休息点选项。"; }
+        catch (Exception error)
+        {
+            message = $"选择失败：{error.Message}";
+            GD.PushError($"[SpireCompanion] rest_option: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecutePurchase(string entryId)
+    {
+        try { GameReader.Purchase(entryId); message = "已购买该商品，等待结算。"; }
+        catch (Exception error)
+        {
+            message = $"购买失败：{error.Message}";
+            GD.PushError($"[SpireCompanion] purchase: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
     }
 
     private void ExecuteReward(int index)
