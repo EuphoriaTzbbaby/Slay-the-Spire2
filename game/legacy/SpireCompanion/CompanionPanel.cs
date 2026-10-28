@@ -8,6 +8,10 @@ namespace SpireCompanion;
 
 internal sealed class CompanionPanel
 {
+    /// <summary>Screens the companion can act on. One list for both the card and auto mode so they cannot drift.</summary>
+    private static readonly HashSet<string> ExecutableKinds =
+        ["Reward", "Rest", "Shop", "Select", "Event", "Map", "Relic", "Rewards"];
+
     private readonly ConcurrentQueue<Action> mainQueue = new();
     private ChatPanel chat = null!;
     private PanelContainer panel = null!;
@@ -228,7 +232,7 @@ internal sealed class CompanionPanel
     private void UpdateDecision(GameSnapshot next)
     {
         var room = next.Room;
-        if (room is null || room.Options.Length == 0 || room.Kind is not ("Reward" or "Rest" or "Shop" or "Select" or "Event" or "Map" or "Relic" or "Rewards"))
+        if (room is null || room.Options.Length == 0 || !ExecutableKinds.Contains(room.Kind))
         {
             decisionCard.Visible = false;
             decisionSignature = "";
@@ -452,7 +456,11 @@ internal sealed class CompanionPanel
         // One action per screen state: identical options must not re-trigger, but a new dialogue page may.
         var optionKey = room.Id + "|" + string.Join(",", room.Options.Select(option => option.Id + option.Name + option.Locked));
         if (optionKey == autoActedKey) return;
-        if (room.Kind is not ("Reward" or "Rest" or "Shop" or "Select")) return;
+        if (!ExecutableKinds.Contains(room.Kind))
+        {
+            GD.Print($"[SpireCompanion] auto_skip_unsupported kind={room.Kind}");
+            return;
+        }
         if (room.Options.All(option => option.Locked)) return;
         autoPending = optionKey;
         GD.Print($"[SpireCompanion] auto_request kind={room.Kind} options={room.Options.Length} room={room.Id}");
