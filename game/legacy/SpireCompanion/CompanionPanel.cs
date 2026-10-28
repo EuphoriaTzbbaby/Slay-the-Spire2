@@ -305,7 +305,8 @@ internal sealed class CompanionPanel
                 default: BuildShopButtons(room); break;
             }
             decisionStatus.Text = $"检测到 {room.Options.Length} 个可选项，点击后立即执行。";
-            GD.Print($"[SpireCompanion] decision kind={room.Kind} options={room.Options.Length} required={room.Required} " +
+            var promptPeek = room.Title.Length > 40 ? room.Title[..40] : room.Title;
+            GD.Print($"[SpireCompanion] decision kind={room.Kind} options={room.Options.Length} required={room.Required} prompt={promptPeek} " +
                 $"names={string.Join("|", room.Options.Select(option => $"{option.Id}:{option.Name}:{(option.Locked ? "locked" : "open")}"))}");
         }
         decisionCard.Visible = true;
