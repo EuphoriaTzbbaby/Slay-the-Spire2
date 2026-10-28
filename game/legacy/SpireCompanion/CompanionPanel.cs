@@ -43,6 +43,7 @@ internal sealed class CompanionPanel
     private double autoWait;
     private string autoActedKey = "";
     private bool autoSelectPendingConfirm;
+    private string shopOpenedFor = "";
     private string windowStatePath = "";
     private Label autoLabel = null!;
     private PanelContainer decisionCard = null!;
@@ -437,11 +438,26 @@ internal sealed class CompanionPanel
         {
             var id = option.Id;
             var isOpen = id == "open";
-            var button = new Button { Text = isOpen ? option.Name : id == "proceed" ? option.Name : $"买「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
-            button.Pressed += isOpen ? ExecuteOpenShop : id == "proceed" ? ExecuteProceed : () => ExecutePurchase(id);
+            var isClose = id == "close";
+            var button = new Button { Text = isOpen || isClose || id == "proceed" ? option.Name : $"买「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
+            button.Pressed += isOpen ? ExecuteOpenShop : isClose ? ExecuteCloseShop : id == "proceed" ? ExecuteProceed : () => ExecutePurchase(id);
             UiStyle.Secondary(button); UiStyle.Size(button, 42);
             decisionButtons.AddChild(button);
         }
+    }
+
+    private void ExecuteCloseShop()
+    {
+        try { GameReader.CloseShop(); message = "已关闭商品界面。"; decisionStatus.Text = message; GD.Print("[SpireCompanion] decision_result action=close_shop ok"); }
+        catch (Exception error)
+        {
+            message = $"关闭商店失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] shop_close: {error}");
+            NoteAutoFailure();
+        }
+        decisionSignature = "";
+        Refresh();
     }
 
     private void ExecuteOpenShop()
@@ -676,13 +692,36 @@ internal sealed class CompanionPanel
             return;
         }
         if (room.Options.All(option => option.Locked)) return;
-        // Opening the shop UI is mechanical, not a strategic choice: do it without a model call.
-        if (room.Kind == "Shop" && room.Options.Any(option => option.Id == "open"))
+        // Shop mechanics: open once, close when nothing is worth buying, then leave.
+        if (room.Kind == "Shop")
         {
-            autoActedKey = optionKey;
-            autoWait = 0.8;
-            ExecuteOpenShop();
-            return;
+            var inventoryOpen = room.Options.Any(option => option.Id == "close");
+            var actionable = room.Options.Any(option => !option.Locked && option.Id is not ("open" or "close" or "proceed"));
+            if (!inventoryOpen && shopOpenedFor != room.Id && room.Options.Any(option => option.Id == "open"))
+            {
+                shopOpenedFor = room.Id;
+                autoActedKey = optionKey;
+                autoWait = 0.8;
+                ExecuteOpenShop();
+                return;
+            }
+            if (!actionable)
+            {
+                if (inventoryOpen)
+                {
+                    autoActedKey = optionKey;
+                    autoWait = 0.8;
+                    ExecuteCloseShop();
+                    return;
+                }
+                if (room.Options.Any(option => option.Id == "proceed" && !option.Locked))
+                {
+                    autoActedKey = optionKey;
+                    autoWait = 0.8;
+                    ExecuteProceed();
+                    return;
+                }
+            }
         }
         autoPending = optionKey;
         GD.Print($"[SpireCompanion] auto_request kind={room.Kind} options={room.Options.Length} room={room.Id}");
