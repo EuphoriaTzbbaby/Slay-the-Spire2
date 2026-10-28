@@ -39,6 +39,9 @@ internal sealed class CompanionPanel
     private string decisionSignature = "";
     private Button toggle = null!;
     private Button solverStart = null!;
+    private Button solverToggle = null!;
+    private bool solverAuto;
+    private double solverRetry;
     private bool reportedReady;
     private bool layoutReported;
     private int ticks;
@@ -115,12 +118,18 @@ internal sealed class CompanionPanel
         statusCard.AddChild(status);
         var controlCard = UiStyle.Card(body, "托管与求解器");
         windowStatePath = Path.Combine(ProjectSettings.GlobalizePath("user://spire-companion"), "window-state.json");
-        autoEnabled = WindowState.Load(windowStatePath).AutoEnabled;
+        var saved = WindowState.Load(windowStatePath);
+        autoEnabled = saved.AutoEnabled;
+        solverAuto = saved.SolverAuto;
         autoToggle = new Button { Text = autoEnabled ? "局外自动操作：开" : "局外自动操作：关" };
         autoToggle.Pressed += ToggleAuto;
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
         controlCard.AddChild(autoToggle);
         controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励结算/休息点/商店/选牌/事件/地图/遗物里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。"));
+        solverToggle = new Button { Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关" };
+        solverToggle.Pressed += ToggleSolverAuto;
+        UiStyle.Secondary(solverToggle); UiStyle.Size(solverToggle, 44);
+        controlCard.AddChild(solverToggle);
         solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
         solverStart.Pressed += StartSolver;
         UiStyle.Primary(solverStart); UiStyle.Size(solverStart, 44);
@@ -149,6 +158,7 @@ internal sealed class CompanionPanel
         toggle.Pressed += () => panel.Visible = !panel.Visible;
         layer.AddChild(toggle);
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
+        solverToggle.Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关";
         tree.Root.AddChild(layer);
         tree.ProcessFrame += () => Tick(tree.Root.GetProcessDeltaTime());
         tree.Root.TreeExiting += () =>
@@ -200,6 +210,7 @@ internal sealed class CompanionPanel
                 $"font_ready={panel.Theme.DefaultFont != null} visible={panel.Visible}");
         }
         autoWait = Math.Max(0, autoWait - delta);
+        solverRetry = Math.Max(0, solverRetry - delta);
         bool pressed = Input.IsPhysicalKeyPressed(Key.F9);
         if (pressed && !f9Down) panel.Visible = !panel.Visible;
         f9Down = pressed;
@@ -415,8 +426,37 @@ internal sealed class CompanionPanel
         if (!autoEnabled) StopAuto();
         else { autoActedKey = ""; autoWait = 0; }
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
-        new WindowState(autoEnabled).Save(windowStatePath);
+        new WindowState(autoEnabled, solverAuto).Save(windowStatePath);
         Refresh();
+    }
+
+    private void ToggleSolverAuto()
+    {
+        solverAuto = !solverAuto;
+        solverToggle.Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关";
+        message = solverAuto ? "已开启自动接管：每场战斗开始后自动交给 CombatSolver。" : "已关闭自动接管，战斗需要手动点。";
+        new WindowState(autoEnabled, solverAuto).Save(windowStatePath);
+        solverRetry = 0;
+        Refresh();
+    }
+
+    /// <summary>Hand every new combat to the solver while the switch is on; auto mode stays untouched.</summary>
+    private void SolverAutoStep(GameSnapshot next)
+    {
+        if (!solverAuto || SolverBridge.Owned || solverRetry > 0) return;
+        if (next.Enemies.Length == 0 || !SolverBridge.CanStart) return;
+        try
+        {
+            SolverBridge.Start();
+            message = "已自动交给 CombatSolver 打本场战斗。";
+            GD.Print("[SpireCompanion] solver_auto_start");
+        }
+        catch (Exception error)
+        {
+            message = $"自动接管失败：{error.Message}";
+            GD.PushWarning($"[SpireCompanion] solver_auto_failed: {error.Message}");
+        }
+        solverRetry = 5;
     }
 
     private void StopAuto()
@@ -424,7 +464,7 @@ internal sealed class CompanionPanel
         autoEnabled = false;
         if (autoToggle != null) autoToggle.Text = "局外自动操作：关";
         if (autoLabel != null) autoLabel.Text = "自动：关";
-        if (windowStatePath.Length > 0) new WindowState(false).Save(windowStatePath);
+        if (windowStatePath.Length > 0) new WindowState(false, solverAuto).Save(windowStatePath);
         autoPending = "";
         autoCts?.Cancel();
         autoCts = null;
@@ -725,7 +765,6 @@ internal sealed class CompanionPanel
 
     private void StartSolver()
     {
-        StopAuto();
         try { SolverBridge.Start(); message = "已交给 CombatSolver；暂停按钮可停止接管。"; }
         catch (Exception error)
         {
@@ -758,6 +797,7 @@ internal sealed class CompanionPanel
             var next = GameReader.Read();
             var solver = SolverBridge.Status();
             UpdateDecision(next);
+            SolverAutoStep(next);
             AutoStep(next);
             stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "只读建议";
             stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : UiStyle.Good);

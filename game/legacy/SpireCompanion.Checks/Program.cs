@@ -66,10 +66,21 @@ Check("Window state persists the auto flag and survives a broken file", () => {
     try
     {
         Require(!WindowState.Load(path).AutoEnabled);
-        new WindowState(true).Save(path);
-        Require(WindowState.Load(path).AutoEnabled);
+        new WindowState(true, true).Save(path);
+        var saved = WindowState.Load(path);
+        Require(saved.AutoEnabled && saved.SolverAuto);
         File.WriteAllText(path, "{broken");
         Require(!WindowState.Load(path).AutoEnabled);
+    }
+    finally { if (File.Exists(path)) File.Delete(path); }
+});
+Check("Old window state without the solver flag still loads", () => {
+    var path = Path.Combine(Path.GetTempPath(), "spire-window-old-" + Guid.NewGuid() + ".json");
+    try
+    {
+        File.WriteAllText(path, "{\"AutoEnabled\":true}");
+        var saved = WindowState.Load(path);
+        Require(saved.AutoEnabled && !saved.SolverAuto);
     }
     finally { if (File.Exists(path)) File.Delete(path); }
 });
