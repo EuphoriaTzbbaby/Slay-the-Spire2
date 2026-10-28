@@ -118,9 +118,9 @@ internal static class GameReader
             var options = buttons.Select((button, index) =>
             {
                 var reward = button.Reward!;
-                var full = potionsFull && reward is PotionReward;
+                var replaces = potionsFull && reward is PotionReward;
                 return new RoomOptionView(index.ToString(), RewardName(reward),
-                    Text(reward.Description) + (full ? "（药水栏已满，先丢弃一瓶）" : ""), full);
+                    Text(reward.Description) + (replaces ? "（药水栏已满，将替换最右侧药水）" : ""), false);
             }).ToList();
             if (FindFirst<NProceedButton>(rewardsScreen)?.IsEnabled == true)
                 options.Add(new RoomOptionView("proceed", "离开奖励（继续）", "剩余奖励将放弃", false));
@@ -340,6 +340,20 @@ internal static class GameReader
                 throw new InvalidOperationException("药水栏已满，先丢弃一瓶再领取。");
         }
         buttons[index].ForceClick();
+    }
+
+    private static async Task DiscardThenClaim(PotionModel potion, NRewardButton button)
+    {
+        try { await PotionCmd.Discard(potion); }
+        catch (Exception error)
+        {
+            Godot.GD.PushError($"[SpireCompanion] potion_discard: {error.Message}");
+            return;
+        }
+        Godot.Callable.From(() =>
+        {
+            if (Godot.GodotObject.IsInstanceValid(button)) button.ForceClick();
+        }).CallDeferred();
     }
 
     public static void SelectRelic(int index)
