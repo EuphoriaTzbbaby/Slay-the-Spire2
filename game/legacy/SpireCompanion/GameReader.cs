@@ -189,8 +189,17 @@ internal static class GameReader
                 if (ui == null) return new RoomView("Treasure", "宝箱房", "等待界面加载", []) { Id = ScreenId(run) };
                 var options = new List<RoomOptionView>();
                 var collection = ui.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
+                var relicCount = RunManager.Instance?.TreasureRoomRelicSynchronizer?.CurrentRelics?.Count ?? 0;
                 if (collection?.Visible != true)
-                    options.Add(new RoomOptionView("open", "打开宝箱", "打开后可以拿取遗物", false));
+                {
+                    // An empty chest makes the game's own award animation throw; leave instead of opening.
+                    if (relicCount == 0 && ui.ProceedButton?.IsEnabled == true)
+                    {
+                        Godot.GD.Print("[SpireCompanion] treasure_empty");
+                        options.Add(new RoomOptionView("proceed", "离开宝箱房（继续）", "这个宝箱没有遗物", false));
+                    }
+                    else options.Add(new RoomOptionView("open", "打开宝箱", "打开后可以拿取遗物", false));
+                }
                 else
                 {
                     var holders = FindAll<NTreasureRoomRelicHolder>(collection).Where(holder => holder.IsEnabled && holder.Visible).ToList();

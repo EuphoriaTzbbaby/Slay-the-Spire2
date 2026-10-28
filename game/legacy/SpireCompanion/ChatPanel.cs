@@ -119,6 +119,12 @@ internal sealed class ChatPanel : IDisposable
             endpoint.Text = settings.Endpoint; model.Text = settings.Model;
             remember.ButtonPressed = settings.RememberApiKey;
             mode.Select(settings.TalkMode switch { "quiet" => 0, "chatty" => 2, _ => 1 });
+            mode.ItemSelected += index =>
+            {
+                // Switching style must take effect on the next request, not only after Save.
+                settings = settings with { TalkMode = index switch { 0 => "quiet", 2 => "chatty", _ => "normal" } };
+                info.Text = $"回复风格已切换为「{new[] { "安静", "普通", "话多" }[Math.Min(index, 2)]}」，下一条回复生效。";
+            };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         { info.Text = "读取配置失败，请重新填写并保存。"; }
