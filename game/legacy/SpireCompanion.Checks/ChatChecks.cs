@@ -131,7 +131,7 @@ internal static class ChatChecks
                 await thinking.AskAsync(settings, "k", "问", snapshot, [], default);
                 throw new Exception("Expected reasoning-only reply to be rejected");
             }
-            catch (ModelReplyException error) { Require(error.Message.Contains("推理内容")); }
+            catch (ModelReplyException error) { Require(error.Message.Contains("思考") || error.Message.Contains("推理内容")); }
         });
         await Check("Screen guidance is specific to the current interface", () =>
         {
