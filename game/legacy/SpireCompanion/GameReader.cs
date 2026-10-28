@@ -98,10 +98,11 @@ internal static class GameReader
         {
             var prompt = selectScreen.GetNodeOrNull<Godot.Label>("%BottomLabel")?.Text ?? "选择一张牌";
             var cards = SortedGridHolders(selectScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
-            return new RoomView("Select", StripTags(prompt), "选中后需要确认", cards.Select((card, index) => new RoomOptionView(
+            var options = RoomOptions.MergeDuplicates(cards.Select((card, index) => new RoomOptionView(
                 index.ToString(), Text(card.Title),
                 $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray()) { Id = ScreenId(selectScreen) };
+                (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray());
+            return new RoomView("Select", StripTags(prompt), "选中后需要确认", options) { Id = ScreenId(selectScreen) };
         }
         if (NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen rewardScreen)
         {

@@ -179,6 +179,22 @@ internal static class ChatChecks
             Require(ChoiceParser.ParseWithReason("{\"id\":\"9\",\"reason\":\"x\"}", allowed).Id == null);
             return Task.CompletedTask;
         });
+        await Check("Duplicate card offers are merged before the model picks", () =>
+        {
+            RoomOptionView[] options =
+            [
+                new("0", "打击", "费用 1", false),
+                new("1", "打击", "费用 1", false),
+                new("2", "防御", "费用 1", false),
+                new("3", "祭品", "费用 0", false),
+            ];
+            var merged = RoomOptions.MergeDuplicates(options);
+            Require(merged.Length == 3);
+            Require(merged[0].Id == "0" && merged[0].Name == "打击" && merged[0].Detail.Contains("共 2 张"));
+            Require(merged[1].Id == "2" && merged[1].Name == "防御" && merged[1].Detail == "费用 1");
+            Require(merged[2].Name == "祭品");
+            return Task.CompletedTask;
+        });
         await Check("Markdown replies become BBCode and raw brackets are escaped", () =>
         {
             var text = ChatMarkdown.ToBbcode("**结论**：先防御。\n- 打 `打击`\n# 标题\n[链接](https://example.com)\n```\ncode\n```\n数值 [2]");
