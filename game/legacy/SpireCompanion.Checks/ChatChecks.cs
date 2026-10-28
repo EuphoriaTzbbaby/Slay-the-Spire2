@@ -214,6 +214,17 @@ internal static class ChatChecks
             Require(system.Contains("不超过 30 个字"));
             return;
         });
+        await Check("Screen brief puts the current options in readable text", () =>
+        {
+            var snapshot = new GameSnapshot("RewardRoom", "铁甲战士", 60, 80, 100, ["打击"], "无", false, "")
+            {
+                Cards = [new CardView(0, "STRIKE", "打击", "1", false, "造成6点伤害。")],
+                Room = new RoomView("Reward", "选择一张牌", "", [new RoomOptionView("0", "重锤", "费用 3：造成32点伤害", false)])
+            };
+            var brief = SnapshotBrief.Describe(snapshot);
+            Require(brief.Contains("重锤") && brief.Contains("选项") && brief.Contains("打击"));
+            return Task.CompletedTask;
+        });
         await Check("Answers quoting cards outside the snapshot are flagged", () =>
         {
             var snapshot = new GameSnapshot("RewardRoom", "铁甲战士", 60, 80, 100, [], "无", false, "")

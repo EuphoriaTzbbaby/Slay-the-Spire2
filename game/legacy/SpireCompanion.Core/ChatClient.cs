@@ -39,7 +39,7 @@ public sealed class ChatClient : IDisposable
     }
 
     public async Task<string> AskAsync(ChatSettings settings, string apiKey, string question, GameSnapshot snapshot,
-        IReadOnlyList<ChatTurn> history, CancellationToken cancellation, string plan = "")
+        IReadOnlyList<ChatTurn> history, CancellationToken cancellation, string plan = "", bool screenChanged = false)
     {
         if (string.IsNullOrWhiteSpace(question) || question.Length > 4000) throw new ArgumentException("请输入 1 到 4000 字的消息。");
         var verbosity = Personality.Instructions(settings.TalkMode);
@@ -53,6 +53,7 @@ public sealed class ChatClient : IDisposable
                 "如果状态 JSON 里有 Room 字段，那就是当前界面真实的标题、描述与选项，按它回答，并可以逐项比较；不要另编选项。" +
                 "历史对话只用于理解追问，不能作为事实来源；卡牌名称与效果必须逐字来自本轮 snapshot 的 Cards、Deck 或 Room.Options。" +
                 "如果玩家提到的牌不在本轮 snapshot 里，直接说\"当前界面没有这张牌\"，不要用历史里的牌或记忆补全，也不要给卡牌编造费用或金币价格。" +
+                (screenChanged ? "注意：相对上一轮，当前界面已经变化；历史对话里的卡牌、选项、价格不适用于当前界面，必须以 current_screen 和本轮 snapshot 为准。" : "") +
                 ScreenGuidance.For(snapshot) }
         };
         foreach (var turn in history)
@@ -60,7 +61,14 @@ public sealed class ChatClient : IDisposable
             messages.Add(new { role = "user", content = turn.Question });
             messages.Add(new { role = "assistant", content = turn.Answer });
         }
-        var context = JsonSerializer.Serialize(new { question, run_plan = plan, snapshot = new { fingerprint = snapshot.Fingerprint, state = snapshot } });
+        var context = JsonSerializer.Serialize(new
+        {
+            current_screen = SnapshotBrief.Describe(snapshot),
+            screen_changed = screenChanged,
+            question,
+            run_plan = plan,
+            snapshot = new { fingerprint = snapshot.Fingerprint, state = snapshot }
+        });
         if (context.Length > 80_000) throw new ArgumentException("当前状态过大，请先缩小提问范围。");
         messages.Add(new { role = "user", content = context });
         var reply = await PostAsync(settings, apiKey, messages, cancellation).ConfigureAwait(false);
