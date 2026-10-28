@@ -22,6 +22,7 @@ internal sealed class CompanionPanel
     private Button pause = null!;
     private PanelContainer decisionCard = null!;
     private VBoxContainer decisionButtons = null!;
+    private Label decisionStatus = null!;
     private string decisionSignature = "";
     private Button toggle = null!;
     private Button solverStart = null!;
@@ -82,6 +83,17 @@ internal sealed class CompanionPanel
         gameScroll = Page("游戏状态", out var body);
         UiStyle.StyleTabs(tabs);
 
+        // Executable choices go first: they are the only thing the player must act on.
+        var decisionBody = UiStyle.Card(body, "可以执行", out decisionCard);
+        decisionCard.Visible = false;
+        decisionBody.AddChild(UiStyle.Hint("只执行你点下的选择，不会自动选或自动购买。"));
+        decisionStatus = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        decisionStatus.AddThemeColorOverride("font_color", UiStyle.AccentDeep);
+        decisionBody.AddChild(decisionStatus);
+        decisionButtons = new VBoxContainer();
+        decisionButtons.AddThemeConstantOverride("separation", 6);
+        decisionBody.AddChild(decisionButtons);
+
         var statusCard = UiStyle.Card(body, "当前局面");
         status = new Label { AutowrapMode = TextServer.AutowrapMode.WordSmart, CustomMinimumSize = new Vector2(0, 80) };
         statusCard.AddChild(status);
@@ -95,13 +107,6 @@ internal sealed class CompanionPanel
         UiStyle.Secondary(pause); UiStyle.Size(pause, 44);
         controlCard.AddChild(pause);
         controlCard.AddChild(UiStyle.Hint("本模块只给文字建议；战斗执行由求解器负责，不经过模型判断。"));
-
-        var decisionBody = UiStyle.Card(body, "可以执行", out decisionCard);
-        decisionCard.Visible = false;
-        decisionBody.AddChild(UiStyle.Hint("只执行你点下的选择，不会自动选或自动购买。"));
-        decisionButtons = new VBoxContainer();
-        decisionButtons.AddThemeConstantOverride("separation", 6);
-        decisionBody.AddChild(decisionButtons);
 
         var debugCard = UiStyle.Card(body, "调试");
         var export = new Button { Text = "导出当前状态" };
@@ -219,6 +224,9 @@ internal sealed class CompanionPanel
                 case "Rest": BuildRestButtons(room); break;
                 default: BuildShopButtons(room); break;
             }
+            decisionStatus.Text = $"检测到 {room.Options.Length} 个可选项，点击后立即执行。";
+            GD.Print($"[SpireCompanion] decision kind={room.Kind} options={room.Options.Length} " +
+                $"names={string.Join("|", room.Options.Select(option => $"{option.Id}:{option.Name}:{(option.Locked ? "locked" : "open")}"))}");
         }
         decisionCard.Visible = true;
     }
@@ -268,10 +276,11 @@ internal sealed class CompanionPanel
 
     private void ExecuteRest(string optionId)
     {
-        try { GameReader.SelectRestOption(optionId); message = "已选择该休息点选项。"; }
+        try { GameReader.SelectRestOption(optionId); message = "已选择该休息点选项。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=rest id={optionId} ok"); }
         catch (Exception error)
         {
             message = $"选择失败：{error.Message}";
+            decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] rest_option: {error}");
         }
         decisionSignature = "";
@@ -280,10 +289,11 @@ internal sealed class CompanionPanel
 
     private void ExecutePurchase(string entryId)
     {
-        try { GameReader.Purchase(entryId); message = "已购买该商品，等待结算。"; }
+        try { GameReader.Purchase(entryId); message = "已购买该商品，等待结算。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=shop id={entryId} ok"); }
         catch (Exception error)
         {
             message = $"购买失败：{error.Message}";
+            decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] purchase: {error}");
         }
         decisionSignature = "";
@@ -292,10 +302,11 @@ internal sealed class CompanionPanel
 
     private void ExecuteReward(int index)
     {
-        try { GameReader.SelectReward(index); message = "已选择奖励卡牌。"; }
+        try { GameReader.SelectReward(index); message = "已选择奖励卡牌。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=reward id={index} ok"); }
         catch (Exception error)
         {
             message = $"选择失败：{error.Message}";
+            decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] select_reward: {error}");
         }
         decisionSignature = "";
