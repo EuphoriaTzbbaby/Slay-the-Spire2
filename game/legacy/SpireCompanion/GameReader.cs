@@ -19,6 +19,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
@@ -116,14 +117,28 @@ internal static class GameReader
         switch (run.CurrentRoom)
         {
             case EventRoom eventRoom:
-                EventModel? model = null;
-                try { model = eventRoom.LocalMutableEvent; }
-                catch (Exception error) { Godot.GD.PushWarning($"[SpireCompanion] event_state: {error.Message}"); }
-                model ??= eventRoom.CanonicalEvent;
-                if (model == null) return new RoomView("Event", "事件（内容未就绪）", "", []) { Id = ScreenId(eventRoom) };
-                return new RoomView("Event", Text(model.Title), Text(model.Description),
-                    model.CurrentOptions?.Select((option, index) => new RoomOptionView(
-                        index.ToString(), Text(option.Title), Text(option.Description), option.IsLocked)).ToArray() ?? []) { Id = ScreenId(eventRoom) };
+                // Reading mutable event models throws CanonicalModelException for some events;
+                // the UI buttons are the reliable source, and a failure must not kill the snapshot.
+                try
+                {
+                    var canonical = eventRoom.CanonicalEvent;
+                    var title = canonical == null ? "事件" : Text(canonical.Title);
+                    var body = canonical == null ? "" : Text(canonical.Description);
+                    var ui = NEventRoom.Instance;
+                    var options = ui == null
+                        ? []
+                        : FindAll<NEventOptionButton>(ui).Select((button, index) => new RoomOptionView(
+                            index.ToString(),
+                            Text(button.Option.Title),
+                            Text(button.Option.Description) + (button.Option.IsProceed ? "（离开）" : ""),
+                            button.Option.IsLocked)).ToArray();
+                    return new RoomView("Event", title, body, options) { Id = ScreenId(eventRoom) };
+                }
+                catch (Exception error)
+                {
+                    Godot.GD.PushWarning($"[SpireCompanion] event_state: {error.Message}");
+                    return new RoomView("Event", "事件（内容暂不可读）", "", []) { Id = ScreenId(eventRoom) };
+                }
             case MerchantRoom shop:
                 var inventory = shop.GetLocalInventory();
                 return new RoomView("Shop", "商店", "金币有限，先买最缺的",
