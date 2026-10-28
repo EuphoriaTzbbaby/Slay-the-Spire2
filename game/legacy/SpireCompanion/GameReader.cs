@@ -24,6 +24,8 @@ using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.Rewards;
+using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -105,6 +107,15 @@ internal static class GameReader
                 $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
                 (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray());
             return new RoomView("Select", StripTags(prompt), "选中后需要确认", options) { Id = ScreenId(selectScreen) };
+        }
+        if (NOverlayStack.Instance?.Peek() is NRewardsScreen rewardsScreen)
+        {
+            var buttons = FindAll<NRewardButton>(rewardsScreen).Where(button => button.Reward != null && button.IsEnabled).ToList();
+            var options = buttons.Select((button, index) => new RoomOptionView(index.ToString(),
+                RewardName(button.Reward!), Text(button.Reward!.Description), false)).ToList();
+            if (FindFirst<NProceedButton>(rewardsScreen)?.IsEnabled == true)
+                options.Add(new RoomOptionView("proceed", "离开奖励（继续）", "剩余奖励将放弃", false));
+            return new RoomView("Rewards", "战斗奖励", "领取想要的东西，或离开", options.ToArray()) { Id = ScreenId(rewardsScreen) };
         }
         if (NOverlayStack.Instance?.Peek() is NChooseARelicSelection relicScreen)
         {
@@ -287,6 +298,33 @@ internal static class GameReader
 
     private static string StripTags(string value) =>
         System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", "");
+
+    private static string RewardName(Reward reward) => reward switch
+    {
+        GoldReward gold => $"金币 {gold.Amount}",
+        PotionReward potion when potion.Potion != null => $"药水：{Text(potion.Potion.Title)}",
+        RelicReward relic when relic.Relic != null => $"遗物：{Text(relic.Relic.Title)}",
+        CardReward => "卡牌奖励",
+        CardRemovalReward => "删牌奖励",
+        _ => "奖励"
+    };
+
+    public static void ClaimReward(int index)
+    {
+        var screen = NOverlayStack.Instance?.Peek() as NRewardsScreen
+            ?? throw new InvalidOperationException("奖励界面已关闭。");
+        var buttons = FindAll<NRewardButton>(screen).Where(button => button.Reward != null && button.IsEnabled).ToList();
+        if (index < 0 || index >= buttons.Count) throw new InvalidOperationException("该奖励已被领取。");
+        var reward = buttons[index].Reward!;
+        if (reward is PotionReward)
+        {
+            var run = RunManager.Instance.DebugOnlyGetState();
+            var player = run != null ? LocalContext.GetMe(run) : null;
+            if (player != null && player.PotionSlots.All(slot => slot != null))
+                throw new InvalidOperationException("药水栏已满，先丢弃一瓶再领取。");
+        }
+        buttons[index].ForceClick();
+    }
 
     public static void SelectRelic(int index)
     {
