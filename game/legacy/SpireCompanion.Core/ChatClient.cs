@@ -40,7 +40,7 @@ public sealed class ChatClient : IDisposable
 
     public async Task<string> AskAsync(ChatSettings settings, string apiKey, string question, GameSnapshot snapshot,
         IReadOnlyList<ChatTurn> history, CancellationToken cancellation, string plan = "", bool screenChanged = false,
-        Func<string, string?>? cardLookup = null)
+        Func<string, string?>? cardLookup = null, Action<string>? toolTrace = null)
     {
         if (string.IsNullOrWhiteSpace(question) || question.Length > 4000) throw new ArgumentException("请输入 1 到 4000 字的消息。");
         var verbosity = Personality.Instructions(settings.TalkMode);
@@ -80,7 +80,7 @@ public sealed class ChatClient : IDisposable
         }
         else
         {
-            reply = await AskWithToolsAsync(settings, apiKey, messages, cancellation, cardLookup).ConfigureAwait(false);
+            reply = await AskWithToolsAsync(settings, apiKey, messages, cancellation, cardLookup, toolTrace).ConfigureAwait(false);
         }
         var grounding = AnswerGrounding.Check(reply, snapshot);
         if (grounding.Unknown.Length == 0) return reply;
@@ -133,7 +133,7 @@ public sealed class ChatClient : IDisposable
     ];
 
     private async Task<string> AskWithToolsAsync(ChatSettings settings, string apiKey, List<object> messages,
-        CancellationToken cancellation, Func<string, string?> cardLookup)
+        CancellationToken cancellation, Func<string, string?> cardLookup, Action<string>? toolTrace)
     {
         for (int round = 0; round < 3; round++)
         {
@@ -156,6 +156,7 @@ public sealed class ChatClient : IDisposable
                 var result = call.Name == "lookup_card"
                     ? cardLookup(call.Argument) ?? $"未找到卡牌「{call.Argument}」，请直接说明没有查到。"
                     : $"未知工具：{call.Name}";
+                toolTrace?.Invoke($"{call.Name}({call.Argument}) -> {(result.Length > 60 ? result[..60] : result)}");
                 messages.Add(new { role = "tool", tool_call_id = call.Id, content = result });
             }
         }
