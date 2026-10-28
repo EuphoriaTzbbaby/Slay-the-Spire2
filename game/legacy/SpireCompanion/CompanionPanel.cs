@@ -37,6 +37,8 @@ internal sealed class CompanionPanel
     private bool lowHpWarned;
     private double quipCooldown;
     private bool quipBusy;
+    private bool autoSuspended;
+    private Button resumeAuto = null!;
     private double autoWait;
     private string autoActedKey = "";
     private bool autoSelectPendingConfirm;
@@ -136,6 +138,10 @@ internal sealed class CompanionPanel
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
         controlCard.AddChild(autoToggle);
         controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励结算/休息点/商店/选牌/事件/地图/遗物里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。"));
+        resumeAuto = new Button { Text = "恢复自动执行", Visible = false };
+        resumeAuto.Pressed += ResumeAuto;
+        UiStyle.Primary(resumeAuto); UiStyle.Size(resumeAuto, 42);
+        controlCard.AddChild(resumeAuto);
         solverToggle = new Button { Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关" };
         solverToggle.Pressed += ToggleSolverAuto;
         UiStyle.Secondary(solverToggle); UiStyle.Size(solverToggle, 44);
@@ -157,6 +163,7 @@ internal sealed class CompanionPanel
         debugCard.AddChild(export);
 
         chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
+        chat.Interrupted += () => SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
 
         layer.AddChild(panel);
         toggle = new Button
@@ -516,6 +523,32 @@ internal sealed class CompanionPanel
         });
     }
 
+    /// <summary>Any interruption hands control back to the player until they explicitly resume.</summary>
+    private void SuspendAuto(string why)
+    {
+        if (!autoEnabled || autoSuspended) return;
+        autoSuspended = true;
+        autoCts?.Cancel();
+        autoPending = "";
+        message = why;
+        if (decisionStatus != null) decisionStatus.Text = why;
+        if (autoLabel != null) autoLabel.Text = "自动：暂停";
+        chat.Notify(why);
+        GD.Print("[SpireCompanion] auto_suspended");
+        Refresh();
+    }
+
+    private void ResumeAuto()
+    {
+        if (!autoEnabled) return;
+        autoSuspended = false;
+        message = "自动执行已恢复。";
+        if (autoLabel != null) autoLabel.Text = "自动：开";
+        if (decisionStatus != null) decisionStatus.Text = message;
+        GD.Print("[SpireCompanion] auto_resumed");
+        Refresh();
+    }
+
     private void ToggleSolverAuto()
     {
         solverAuto = !solverAuto;
@@ -559,7 +592,7 @@ internal sealed class CompanionPanel
     /// <summary>Auto mode only ever acts on an executable screen, one decision per observed state.</summary>
     private void AutoStep(GameSnapshot next)
     {
-        if (!autoEnabled || SolverBridge.Owned) return;
+        if (!autoEnabled || autoSuspended || SolverBridge.Owned) return;
         if (autoPending.Length > 0 || autoWait > 0)
         {
             if (next.Room is { } waiting && waiting.Options.Length > 0)
