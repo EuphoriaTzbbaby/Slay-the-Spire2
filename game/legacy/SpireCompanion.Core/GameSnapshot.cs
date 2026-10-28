@@ -12,6 +12,9 @@ public sealed record RoomView(string Kind, string Title, string Description, Roo
 {
     /// <summary>Runtime identity of the screen that produced this room; stable for one visit.</summary>
     public string Id { get; init; } = "";
+
+    /// <summary>How many cards a selection screen wants; 1 for ordinary single-pick screens.</summary>
+    public int Required { get; init; } = 1;
 }
 
 public sealed record GameSnapshot(string Scene, string Character, int Hp, int MaxHp, int Gold,
