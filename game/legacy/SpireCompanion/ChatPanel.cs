@@ -248,6 +248,16 @@ internal sealed class ChatPanel : IDisposable
         catch (Exception error) when (error is ProfileVaultException or System.Security.Cryptography.CryptographicException or ArgumentException or IOException or UnauthorizedAccessException or InvalidOperationException or PlatformNotSupportedException or System.Runtime.InteropServices.ExternalException or TypeInitializationException or DllNotFoundException or EntryPointNotFoundException or UriFormatException)
         { info.Text = "删除失败，请检查服务地址和本地档案权限。"; }
     }
+    /// <summary>Entry point for text that did not come from the input box (voice input will use this).</summary>
+    public void SubmitExternal(string text)
+    {
+        if (disposed) return;
+        if (busy) { info.Text = "上一条还在回复，请稍候或先取消。"; return; }
+        Begin(text);
+    }
+
+    public bool Busy => busy;
+
     private void Begin(string text)
     {
         if (disposed || busy || profiles.Busy) return;
