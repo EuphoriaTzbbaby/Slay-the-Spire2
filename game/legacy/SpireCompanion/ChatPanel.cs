@@ -308,14 +308,17 @@ internal sealed class ChatPanel : IDisposable
     /// <summary>Current reply style, used for local lines such as the defeat note.</summary>
     public string TalkMode => settings.TalkMode;
 
-    public Task<string> DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, CancellationToken token) =>
-        client.DecideAsync(settings, key.Text, snapshot, options, required, token);
+    public Task<string> DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, CancellationToken token) =>
+        client.DecideAsync(settings, key.Text, snapshot, options, required, directive, token);
 
     /// <summary>Auto-mode note in the conversation; not added to model history.</summary>
     public void Notify(string text) => Append("自动", text);
 
     /// <summary>Raised when the player starts talking to the companion or cancels a request.</summary>
     public event Action? Interrupted;
+
+    /// <summary>Raised with the player's text, so auto decisions can honour explicit instructions.</summary>
+    public event Action<string>? UserSaid;
 
     public (ChatSettings Settings, string ApiKey) RequestContext => (settings, key.Text);
 

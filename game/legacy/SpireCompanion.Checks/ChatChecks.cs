@@ -214,6 +214,15 @@ internal static class ChatChecks
             Require(system.Contains("不超过 30 个字"));
             return;
         });
+        await Check("Explicit pick instructions become a pin, negatives do not", () =>
+        {
+            Require(UserDirective.PinTarget("你一定要听我的，选重锤") == "重锤");
+            Require(UserDirective.PinTarget("拿祭品") == "祭品");
+            Require(UserDirective.PinTarget("别选铁斩波") == "");
+            Require(UserDirective.PinTarget("不要买会员卡") == "");
+            Require(UserDirective.PinTarget("这牌好丑") == "");
+            return Task.CompletedTask;
+        });
         await Check("Selection prompts reveal how many cards are required", () =>
         {
             Require(ScreenPrompt.RequiredCards("选择1张牌来升级") == 1);

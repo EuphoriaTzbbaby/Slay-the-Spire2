@@ -59,6 +59,9 @@ internal sealed class CompanionPanel
     private Button voiceToggle = null!;
     private Label voiceStatus = null!;
     private readonly VoiceClient voice = new();
+    private string pinnedName = "";
+    private string lastDirective = "";
+    private double pinnedAt;
     private double solverRetry;
     private bool defeatNotified;
     private bool reportedReady;
@@ -184,6 +187,7 @@ internal sealed class CompanionPanel
 
         chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
         chat.Interrupted += () => SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
+        chat.UserSaid += NoteDirective;
 
         layer.AddChild(panel);
         toggle = new Button
@@ -829,22 +833,23 @@ internal sealed class CompanionPanel
                 }
             }
         }
+        if (TryApplyPin(next, room, optionKey)) return;
         autoPending = optionKey;
         GD.Print($"[SpireCompanion] auto_request kind={room.Kind} options={room.Options.Length} room={room.Id}");
         autoCts = new CancellationTokenSource();
         autoCts.CancelAfter(TimeSpan.FromSeconds(30));
         if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
-        _ = DecideAsync(next, room.Options, room.Required, autoCts.Token);
+        _ = DecideAsync(next, room.Options, room.Required, lastDirective, autoCts.Token);
     }
 
-    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, CancellationToken token)
+    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, CancellationToken token)
     {
         var ids = options.Select(option => option.Id).ToArray();
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                var reply = await chat.DecideAsync(snapshot, options, required, token).ConfigureAwait(false);
+                var reply = await chat.DecideAsync(snapshot, options, required, directive, token).ConfigureAwait(false);
                 var (id, ranked, reason) = ChoiceParser.ParseWithIds(reply, ids);
                 if (id != null)
                 {
@@ -886,7 +891,7 @@ internal sealed class CompanionPanel
     {
         try
         {
-            var reply = await chat.DecideAsync(snapshot, remaining, need, token).ConfigureAwait(false);
+            var reply = await chat.DecideAsync(snapshot, remaining, need, "", token).ConfigureAwait(false);
             var (next, ranked, _) = ChoiceParser.ParseWithIds(reply, remaining.Select(option => option.Id).ToArray());
             if (next == null) return chosen;
             var merged = chosen.ToList();
@@ -1159,6 +1164,35 @@ internal sealed class CompanionPanel
         }
         decisionSignature = "";
         Refresh();
+    }
+
+    /// <summary>Remember an explicit instruction ("选重锤") so the next matching decision obeys it.</summary>
+    private void NoteDirective(string text)
+    {
+        lastDirective = text.Length > 80 ? text[..80] : text;
+        var target = UserDirective.PinTarget(text);
+        if (target.Length == 0) return;
+        pinnedName = target;
+        pinnedAt = Time.GetTicksMsec() / 1000.0;
+        GD.Print($"[SpireCompanion] directive pin={pinnedName} text={text}");
+    }
+
+    /// <summary>Apply a pinned instruction deterministically instead of asking the model again.</summary>
+    private bool TryApplyPin(GameSnapshot next, RoomView room, string optionKey)
+    {
+        if (pinnedName.Length == 0) return false;
+        if (Time.GetTicksMsec() / 1000.0 - pinnedAt > 180) { pinnedName = ""; return false; }
+        if (!ExecutableKinds.Contains(room.Kind)) return false;
+        var option = room.Options.FirstOrDefault(candidate => !candidate.Locked &&
+            (candidate.Name.Contains(pinnedName) || pinnedName.Contains(candidate.Name)));
+        if (option == null) return false;
+        var name = option.Name;
+        pinnedName = "";
+        autoActedKey = optionKey;
+        autoWait = 1.0;
+        GD.Print($"[SpireCompanion] pin_apply kind={room.Kind} id={option.Id} name={name}");
+        ApplyAuto(next, [option.Id], "按你的要求");
+        return true;
     }
 
     /// <summary>Double-tap W toggles: pause (with solver stop) when running, resume when suspended.</summary>
