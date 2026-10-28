@@ -1,7 +1,9 @@
 # 在 Windows 上加载尖塔 AI 陪玩 Mod
 
 面向：负责 Windows 侧验证的同学。
-范围：把本仓库的 `SpireCompanion`（尖塔 AI 陪玩（开发版））装进《杀戮尖塔 2》并确认加载成功。**不含 CombatSolver / RitsuLib**，那是另一条线。
+范围：把本仓库的 `SpireCompanion`（尖塔 AI 陪玩（开发版））装进《杀戮尖塔 2》并确认加载成功。
+
+> **必须同时安装 CombatSolver 和 RitsuLib**：本 Mod 只负责局外自动与聊天，战斗出牌完全交给 CombatSolver；不装它们，进入战斗后没有任何自动操作。两者都从 Steam 创意工坊订阅（RitsuLib 是 CombatSolver 的依赖），装完后在游戏 Mod 列表里确认已启用。
 
 本文所有「做对了的现象」都对应真实日志或文件，看不到时按第 4 节回传信息，不要凭感觉判断成功。
 
@@ -11,6 +13,7 @@
 | --- | --- |
 | 编译用游戏数据 | `...\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64`（必须含 `sts2.dll`、`GodotSharp.dll`） |
 | Mod 加载目录 | `...\steamapps\common\Slay the Spire 2\mods\`（游戏根目录下，不是数据子目录） |
+| 战斗求解器 | **CombatSolver**（创意工坊订阅）+ **RitsuLib**（CombatSolver 的依赖） |
 | 游戏用户数据 | `%APPDATA%\SlayTheSpire2\spire-companion\`（档案、导出；导出时面板会显示完整路径，不必背） |
 
 macOS 的 mods 在 app 包内，Windows 在游戏根目录，这一点两边不同，最容易装错。
@@ -128,7 +131,7 @@ Mod 列表里出现「尖塔 AI 陪玩（开发版）」，ID 为 `SpireCompanio
 | 没有「AI 搭子」按钮 | Mod 没加载 | 完全退出游戏 → 确认 `mods\SpireCompanion\` 三个文件 → 确认 Mod 列表已启用 → 再看日志第一条 |
 | 中文显示成方框 | 用了旧 DLL 或字体未就绪 | 确认 DLL 是本次构建；把 `PANEL_READY` 那行发回 |
 | 窗口开了但内容空白 | 状态读取失败 | 日志里找 `[SpireCompanion] read_state` |
-| 「交给 CombatSolver」是灰的 | 没装求解器（正常） | 与本次验证无关，别当 bug |
+| 「交给 CombatSolver」是灰的 | 没装 CombatSolver / RitsuLib，或不在战斗 | **这不是正常状态**：去创意工坊订阅 CombatSolver 与 RitsuLib，重启后确认加载 |
 | 保存设置提示「未落盘」 | 本地档案没解锁 | 先创建/解锁档案；只想临时用就取消勾选「记住」 |
 | 保存密钥报错 | Windows 凭据管理器路径**未实测** | 先取消勾选「记住」用会话密钥，把报错原文发回 |
 | 聊天 401/403/404/429 | 密钥、权限、地址或额度 | 按提示核对；401 是 Key，404 是地址/模型名 |
@@ -146,7 +149,7 @@ Mod 列表里出现「尖塔 AI 陪玩（开发版）」，ID 为 `SpireCompanio
 
 ## 5. 边界：这些「没做到」是已知的，不算 bug
 
-- 本 Mod **只给建议，不自动出牌**；自动战斗由 CombatSolver 负责（需另装，且依赖 RitsuLib）。
+- 本 Mod **不自己出牌**；自动战斗由 **CombatSolver** 负责，**必须安装 CombatSolver + RitsuLib**，否则战斗不会自动进行。
 - 奖励、商店、休息点、地图**只读**，不会代替你选择或购买。
 - 语音尚未接入。
 - Windows 的密钥缓存路径（凭据管理器）还没实测，macOS 已通过。
