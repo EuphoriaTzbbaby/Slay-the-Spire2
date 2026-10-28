@@ -214,6 +214,15 @@ internal static class ChatChecks
             Require(system.Contains("不超过 30 个字"));
             return;
         });
+        await Check("Selection prompts reveal how many cards are required", () =>
+        {
+            Require(ScreenPrompt.RequiredCards("选择1张牌来升级") == 1);
+            Require(ScreenPrompt.RequiredCards("选择2张牌来移除") == 2);
+            Require(ScreenPrompt.RequiredCards("选择两张牌来升级") == 2);
+            Require(ScreenPrompt.RequiredCards("Choose 3 cards to remove") == 3);
+            Require(ScreenPrompt.RequiredCards("") == 1);
+            return Task.CompletedTask;
+        });
         await Check("Ranked ids keep the primary first and drop unknown ids", () =>
         {
             var (id, ids, reason) = ChoiceParser.ParseWithIds(

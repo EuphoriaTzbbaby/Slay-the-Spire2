@@ -29,6 +29,7 @@ internal sealed class CompanionPanel
     private CancellationTokenSource? autoCts;
     private string autoPending = "";
     private string[] autoPendingIds = [];
+    private readonly HashSet<string> autoSelectedIds = [];
     private int autoActionFails;
     private string pendingShopId = "";
     private string pendingShopName = "";
@@ -304,7 +305,7 @@ internal sealed class CompanionPanel
                 default: BuildShopButtons(room); break;
             }
             decisionStatus.Text = $"检测到 {room.Options.Length} 个可选项，点击后立即执行。";
-            GD.Print($"[SpireCompanion] decision kind={room.Kind} options={room.Options.Length} " +
+            GD.Print($"[SpireCompanion] decision kind={room.Kind} options={room.Options.Length} required={room.Required} " +
                 $"names={string.Join("|", room.Options.Select(option => $"{option.Id}:{option.Name}:{(option.Locked ? "locked" : "open")}"))}");
         }
         decisionCard.Visible = true;
@@ -602,12 +603,12 @@ internal sealed class CompanionPanel
         var room = next.Room;
         if (room is null || room.Kind != "Shop") pendingShopId = "";
         if (room is null) { autoSelectPendingConfirm = false; return; }
-        if (room.Kind != "Select") { autoSelectPendingConfirm = false; autoPendingIds = []; }
+        if (room.Kind != "Select") { autoSelectPendingConfirm = false; autoPendingIds = []; autoSelectedIds.Clear(); }
         if (autoSelectPendingConfirm)
         {
             if (GameReader.CanConfirmSelection())
             {
-                try { GameReader.ConfirmSelection(); message = "自动操作：已确认选牌。"; autoWait = 1.0; autoPendingIds = []; }
+                try { GameReader.ConfirmSelection(); message = "自动操作：已确认选牌。"; autoWait = 1.0; autoPendingIds = []; autoSelectedIds.Clear(); }
                 catch (Exception error) { message = $"自动确认失败：{error.Message}"; StopAuto(); }
                 autoSelectPendingConfirm = false;
                 return;
@@ -622,13 +623,32 @@ internal sealed class CompanionPanel
                 try
                 {
                     GameReader.SelectGridCard(pickIndex);
-                    message = "自动操作：继续选下一张。";
+                    autoSelectedIds.Add(pick);
+                    message = $"自动操作：继续选下一张（{autoSelectedIds.Count}/{Math.Max(1, room.Required)}）。";
                     autoWait = 0.6;
                 }
                 catch (Exception error) { message = $"自动选牌失败：{error.Message}"; GD.PushError($"[SpireCompanion] select_next: {error}"); }
                 return;
             }
-            StopAutoWith("选牌界面还需要继续选择，但模型只给了一个候选，已停止自动操作。");
+            // Model gave too few ids: fill the remaining picks from unlocked, not-yet-selected cards.
+            if (autoSelectedIds.Count < Math.Max(1, room.Required))
+            {
+                var filler = room.Options.FirstOrDefault(option => !option.Locked && !autoSelectedIds.Contains(option.Id) && int.TryParse(option.Id, out _));
+                if (filler != null && int.TryParse(filler.Id, out var fillerIndex))
+                {
+                    try
+                    {
+                        GameReader.SelectGridCard(fillerIndex);
+                        autoSelectedIds.Add(filler.Id);
+                        message = $"自动操作：补选第 {autoSelectedIds.Count} 张（共 {Math.Max(1, room.Required)} 张）。";
+                        GD.Print($"[SpireCompanion] select_fill id={filler.Id} count={autoSelectedIds.Count}/{room.Required}");
+                        autoWait = 0.6;
+                    }
+                    catch (Exception error) { message = $"补选失败：{error.Message}"; GD.PushError($"[SpireCompanion] select_fill: {error}"); }
+                    return;
+                }
+            }
+            StopAutoWith($"选牌界面需要选 {Math.Max(1, room.Required)} 张，但无法继续完成，已停止自动操作。");
             return;
         }
         // One action per screen state: identical options must not re-trigger, but a new dialogue page may.
@@ -645,20 +665,27 @@ internal sealed class CompanionPanel
         autoCts = new CancellationTokenSource();
         autoCts.CancelAfter(TimeSpan.FromSeconds(30));
         if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
-        _ = DecideAsync(next, room.Options, autoCts.Token);
+        _ = DecideAsync(next, room.Options, room.Required, autoCts.Token);
     }
 
-    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, CancellationToken token)
+    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, CancellationToken token)
     {
         var ids = options.Select(option => option.Id).ToArray();
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                var reply = await chat.DecideAsync(snapshot, options, token).ConfigureAwait(false);
+                var reply = await chat.DecideAsync(snapshot, options, required, token).ConfigureAwait(false);
                 var (id, ranked, reason) = ChoiceParser.ParseWithIds(reply, ids);
                 if (id != null)
                 {
+                    // Multi-card screens: ask for the remaining picks instead of stopping at one.
+                    if (required > 1 && ranked.Length < required)
+                    {
+                        var remaining = options.Where(option => !ranked.Contains(option.Id)).ToArray();
+                        if (remaining.Length > 0)
+                            ranked = await CompleteMultiPick(snapshot, remaining, required - ranked.Length, ranked, token).ConfigureAwait(false);
+                    }
                     mainQueue.Enqueue(() => ApplyAuto(snapshot, ranked, reason));
                     return;
                 }
@@ -683,6 +710,26 @@ internal sealed class CompanionPanel
             }
         }
         mainQueue.Enqueue(() => StopAutoWith("自动决策两次都没给出合法选项，已停止自动操作。"));
+    }
+
+    private async Task<string[]> CompleteMultiPick(GameSnapshot snapshot, RoomOptionView[] remaining, int need,
+        string[] chosen, CancellationToken token)
+    {
+        try
+        {
+            var reply = await chat.DecideAsync(snapshot, remaining, need, token).ConfigureAwait(false);
+            var (next, ranked, _) = ChoiceParser.ParseWithIds(reply, remaining.Select(option => option.Id).ToArray());
+            if (next == null) return chosen;
+            var merged = chosen.ToList();
+            foreach (var id in ranked) if (!merged.Contains(id)) merged.Add(id);
+            GD.Print($"[SpireCompanion] multi_pick chosen={merged.Count} required={need + chosen.Length}");
+            return merged.ToArray();
+        }
+        catch (Exception error)
+        {
+            GD.PushWarning($"[SpireCompanion] multi_pick_failed: {error.Message}");
+            return chosen;
+        }
     }
 
     private static string Truncate(string value) => value.Length <= 200 ? value : value[..200];
@@ -758,6 +805,8 @@ internal sealed class CompanionPanel
             case "Relic" when int.TryParse(id, out var relicIndex): ExecuteRelic(relicIndex); break;
             case "Select" when int.TryParse(id, out var cardIndex):
                 autoSelectPendingConfirm = true;
+                autoSelectedIds.Clear();
+                autoSelectedIds.Add(id);
                 autoWait = 0.4;
                 ExecuteGridCard(cardIndex, room.Options.First(option => option.Id == id).Name);
                 break;

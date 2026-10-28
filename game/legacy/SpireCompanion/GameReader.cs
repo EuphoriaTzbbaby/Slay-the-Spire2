@@ -111,7 +111,8 @@ internal static class GameReader
                 index.ToString(), Text(card.Title),
                 $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
                 (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(CardText(card), 100), false)).ToArray());
-            return new RoomView("Select", StripTags(prompt), "选中后需要确认", options) { Id = ScreenId(selectScreen) };
+            return new RoomView("Select", StripTags(prompt), "选中后需要确认", options)
+                { Id = ScreenId(selectScreen), Required = ScreenPrompt.RequiredCards(StripTags(prompt)) };
         }
         if (NOverlayStack.Instance?.Peek() is NRewardsScreen rewardsScreen)
         {
