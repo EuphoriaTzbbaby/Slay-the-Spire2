@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace SpireCompanion.Core;
 
-public sealed record CardView(int Index, string Id, string Name, string Cost, bool Upgraded);
+public sealed record CardView(int Index, string Id, string Name, string Cost, bool Upgraded, string Text = "");
 public sealed record ItemView(int Index, string Id, string Name);
 public sealed record EnemyView(int Index, string Id, string Name, int Hp, int MaxHp, int Block);
 public sealed record RoomOptionView(string Id, string Name, string Detail, bool Locked);
