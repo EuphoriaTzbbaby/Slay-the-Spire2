@@ -24,9 +24,8 @@ internal sealed class CompanionPanel
     private bool autoEnabled;
     private CancellationTokenSource? autoCts;
     private string autoPending = "";
-    private string autoDone = "";
     private double autoWait;
-    private string autoArmedKind = "";
+    private string autoActedRoom = "";
     private bool autoSelectPendingConfirm;
     private string windowStatePath = "";
     private Label autoLabel = null!;
@@ -353,7 +352,7 @@ internal sealed class CompanionPanel
             ? "已开启局外自动操作：只在奖励、休息点、商店里替你点一次。"
             : "已关闭局外自动操作。";
         if (!autoEnabled) StopAuto();
-        else { autoDone = ""; autoWait = 0; }
+        else { autoActedRoom = ""; autoWait = 0; }
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
         new WindowState(autoEnabled).Save(windowStatePath);
         Refresh();
@@ -375,27 +374,26 @@ internal sealed class CompanionPanel
     {
         if (!autoEnabled || SolverBridge.Owned || autoPending.Length > 0 || autoWait > 0) return;
         var room = next.Room;
-        if (room is null) { autoArmedKind = ""; autoSelectPendingConfirm = false; return; }
+        if (room is null) { autoSelectPendingConfirm = false; return; }
         if (room.Kind != "Select") autoSelectPendingConfirm = false;
         if (autoSelectPendingConfirm)
         {
             if (GameReader.CanConfirmSelection())
             {
-                try { GameReader.ConfirmSelection(); message = "自动操作：已确认选牌。"; autoWait = 1.0; autoArmedKind = "Select"; }
+                try { GameReader.ConfirmSelection(); message = "自动操作：已确认选牌。"; autoWait = 1.0; }
                 catch (Exception error) { message = $"自动确认失败：{error.Message}"; StopAuto(); }
                 autoSelectPendingConfirm = false;
             }
             return;
         }
-        if (room.Kind != autoArmedKind) autoArmedKind = "";
-        // One action per screen visit: a shop should not drain the purse on its own.
-        if (room.Kind == autoArmedKind) return;
+        // One action per screen instance: leaving and re-entering the same screen must not re-trigger it.
+        if (room.Id.Length > 0 && room.Id == autoActedRoom) return;
         if (room.Kind is not ("Reward" or "Rest" or "Shop" or "Select")) return;
         if (room.Options.All(option => option.Locked)) return;
-        var key = next.Fingerprint + "|" + room.Kind;
-        if (key == autoDone) return;
-        autoPending = key;
+        autoPending = room.Id + "|" + room.Kind;
         autoCts = new CancellationTokenSource();
+        autoCts.CancelAfter(TimeSpan.FromSeconds(20));
+        if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
         _ = DecideAsync(next, room.Options, autoCts.Token);
     }
 
@@ -407,7 +405,16 @@ internal sealed class CompanionPanel
             var id = ChoiceParser.Parse(reply, options.Select(option => option.Id).ToArray());
             mainQueue.Enqueue(() => ApplyAuto(snapshot.Fingerprint, id));
         }
-        catch (OperationCanceledException) { mainQueue.Enqueue(() => autoPending = ""); }
+        catch (OperationCanceledException)
+        {
+            mainQueue.Enqueue(() =>
+            {
+                autoPending = "";
+                if (!autoEnabled) return;
+                message = "自动决策超时，已停止自动操作；可手动点击，或稍后重新开启。";
+                StopAuto();
+            });
+        }
         catch (Exception error)
         {
             mainQueue.Enqueue(() =>
@@ -437,9 +444,9 @@ internal sealed class CompanionPanel
             message = "选项已失效，已丢弃这条自动决策。";
             return;
         }
-        autoDone = fingerprint + "|" + room.Kind;
-        autoArmedKind = room.Kind;
+        autoActedRoom = room.Id;
         autoWait = 1.0;
+        GD.Print($"[SpireCompanion] auto_action kind={room.Kind} id={id} room={room.Id}");
         switch (room.Kind)
         {
             case "Reward" when int.TryParse(id, out var index): ExecuteReward(index); break;
@@ -448,14 +455,20 @@ internal sealed class CompanionPanel
             case "Select" when int.TryParse(id, out var cardIndex):
                 autoSelectPendingConfirm = true;
                 autoWait = 0.4;
-                ExecuteGridCard(cardIndex);
+                ExecuteGridCard(cardIndex, room.Options.First(option => option.Id == id).Name);
                 break;
         }
     }
 
-    private void ExecuteGridCard(int index)
+    private void ExecuteGridCard(int index, string? name = null)
     {
-        try { GameReader.SelectGridCard(index); message = "已选中该卡牌，需要时再点确认。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=select_grid id={index} ok"); }
+        try
+        {
+            GameReader.SelectGridCard(index);
+            message = name == null ? "已选中该卡牌，需要时再点确认。" : $"已选中「{name}」，确认中…";
+            decisionStatus.Text = message;
+            GD.Print($"[SpireCompanion] decision_result action=select_grid id={index} name={name ?? "manual"} ok");
+        }
         catch (Exception error)
         {
             message = $"选牌失败：{error.Message}";
