@@ -7,6 +7,11 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
     private readonly List<ChatTurn> history = [];
     private CancellationTokenSource? active;
     private bool disposed;
+    public (string Question, string Answer)? Last
+    {
+        get { lock (sync) return history.Count == 0 ? null : (history[^1].Question, history[^1].Answer); }
+    }
+
     public async Task<ChatReply> AskAsync(ChatSettings settings, string key, string question, GameSnapshot snapshot, string plan = "", bool screenChanged = false, Func<string, string, string?>? toolExecutor = null, Action<string>? toolTrace = null, string liveState = "")
     {
         CancellationTokenSource request;

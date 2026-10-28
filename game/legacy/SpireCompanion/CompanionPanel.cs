@@ -851,17 +851,17 @@ internal sealed class CompanionPanel
         autoCts = new CancellationTokenSource();
         autoCts.CancelAfter(TimeSpan.FromSeconds(30));
         if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
-        _ = DecideAsync(next, room.Options, room.Required, lastDirective, plan.Describe(), autoCts.Token);
+        _ = DecideAsync(next, room.Options, room.Required, lastDirective, plan.Describe(), chat.RecentExchange, autoCts.Token);
     }
 
-    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, string runPlan, CancellationToken token)
+    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, string runPlan, string playerContext, CancellationToken token)
     {
         var ids = options.Select(option => option.Id).ToArray();
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                var reply = await chat.DecideAsync(snapshot, options, required, directive, token, runPlan).ConfigureAwait(false);
+                var reply = await chat.DecideAsync(snapshot, options, required, directive, token, runPlan, playerContext).ConfigureAwait(false);
                 var (id, ranked, reason) = ChoiceParser.ParseWithIds(reply, ids);
                 if (id != null)
                 {
@@ -903,7 +903,7 @@ internal sealed class CompanionPanel
     {
         try
         {
-            var reply = await chat.DecideAsync(snapshot, remaining, need, "", token, runPlan).ConfigureAwait(false);
+            var reply = await chat.DecideAsync(snapshot, remaining, need, "", token, runPlan, "").ConfigureAwait(false);
             var (next, ranked, _) = ChoiceParser.ParseWithIds(reply, remaining.Select(option => option.Id).ToArray());
             if (next == null) return chosen;
             var merged = chosen.ToList();
@@ -1310,7 +1310,8 @@ internal sealed class CompanionPanel
         if (target.Length == 0) return;
         pinnedName = target;
         pinnedAt = Time.GetTicksMsec() / 1000.0;
-        chat.Notify($"已记住：下一屏优先选「{pinnedName}」；恢复自动执行后生效。");
+        if (plan.AddPreference(pinnedName)) { SavePlan(); UpdatePlanLabel(); }
+        chat.Notify($"已记住：下一屏优先选「{pinnedName}」，并计入本局偏好；恢复自动执行后生效。");
         GD.Print($"[SpireCompanion] directive pin={pinnedName} source={source} text={text}");
     }
 
