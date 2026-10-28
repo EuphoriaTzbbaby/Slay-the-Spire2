@@ -20,7 +20,22 @@ macOS 的 mods 在 app 包内，Windows 在游戏根目录，这一点两边不�
 
 > 2026-10-28：本指南已在 Windows 实机走通（安装、加载、窗口可用）。
 
-## 1. 两种装法，选一种
+## 1. 三种装法，选一种
+
+### 路线 0：一键安装包（推荐给不写代码的同学）
+
+1. 从组里拿 `SpireCompanion-win64.zip`（仓库里执行 `python3 scripts/package_release.py` 生成，`dist/` 下）；
+2. 解压到任意目录（不要直接在压缩包里双击）；
+3. 双击 **`install.bat`**；
+4. 脚本自动找 Steam 游戏目录；找不到会让你粘贴，粘贴含 `SlayTheSpire2.exe` 的文件夹；
+5. 脚本把 `SpireCompanion` 复制到 `mods\`，并检查 `CombatSolver` 和 `RitsuLib`，缺了会提示去创意工坊搜索；
+6. 完全退出游戏再启动，确认 Mod 列表里「尖塔 AI 陪玩（开发版）」已启用。
+
+说明：
+
+- 脚本只写 `mods\SpireCompanion\`，不碰存档、不碰其他 Mod；
+- 自动战斗仍然要自己订阅 **CombatSolver + RitsuLib**，脚本不能代替订阅；
+- 一键脚本是 2026-10-28 新增的，**还没在 Windows 实测**；第一次用如果失败，按第 4 节把窗口截图和日志发回来。
 
 ### 路线 A：直接复制现成 DLL（最快，要求版本一致）
 
