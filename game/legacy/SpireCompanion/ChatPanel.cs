@@ -304,7 +304,7 @@ internal sealed class ChatPanel : IDisposable
             var screenChanged = lastScreenKey.Length > 0 && screenKey != lastScreenKey;
             lastScreenKey = screenKey;
             var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "", screenChanged,
-                LookupCardOnMain).ConfigureAwait(false);
+                LookupCardOnMain, message => Godot.GD.Print($"[SpireCompanion] chat_tool {message}")).ConfigureAwait(false);
             onMain(() =>
             {
                 if (disposed || number != requestNumber) return;
