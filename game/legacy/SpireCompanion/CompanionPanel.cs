@@ -158,7 +158,7 @@ internal sealed class CompanionPanel
         pause.Pressed += PauseAll;
         UiStyle.Secondary(pause); UiStyle.Size(pause, 44);
         controlCard.AddChild(pause);
-        controlCard.AddChild(UiStyle.Hint("快捷键：双击 W 暂停自动操作并停止已接管的求解器；点「恢复自动执行」继续。"));
+        controlCard.AddChild(UiStyle.Hint("快捷键：双击 W 切换暂停/恢复自动操作（暂停时同时停止已接管的求解器）；聊天输入时不会触发。"));
 
         var debugCard = UiStyle.Card(body, "调试");
         var export = new Button { Text = "导出当前状态" };
@@ -259,7 +259,7 @@ internal sealed class CompanionPanel
             if (wPressed && !wDown)
             {
                 var now = Time.GetTicksMsec() / 1000.0;
-                if (now - lastWTap < 0.45) { lastWTap = -10; HotkeyPause(); }
+                if (now - lastWTap < 0.45) { lastWTap = -10; HotkeyToggleAuto(); }
                 else lastWTap = now;
             }
             wDown = wPressed;
@@ -1070,13 +1070,28 @@ internal sealed class CompanionPanel
         Refresh();
     }
 
-    /// <summary>Double-tap W: suspend auto (resumable) and stop a solver takeover.</summary>
-    private void HotkeyPause()
+    /// <summary>Double-tap W toggles: pause (with solver stop) when running, resume when suspended.</summary>
+    private void HotkeyToggleAuto()
     {
-        if (autoEnabled) SuspendAuto("快捷键 WW：已暂停自动操作，点「恢复自动执行」继续。");
+        if (!autoEnabled)
+        {
+            message = "自动操作未开启，双击 W 无效。";
+            decisionStatus.Text = message;
+            chat.Notify(message);
+            GD.Print("[SpireCompanion] hotkey_toggle action=ignored");
+            return;
+        }
+        if (autoSuspended)
+        {
+            ResumeAuto();
+            chat.Notify("快捷键：已恢复自动执行。");
+            GD.Print("[SpireCompanion] hotkey_toggle action=resume");
+            return;
+        }
+        SuspendAuto("快捷键 WW：已暂停自动操作，再双击 W 恢复。");
         if (SolverBridge.Owned)
         {
-            try { SolverBridge.StopOwned(); message = "快捷键 WW：已暂停自动并停止求解器。"; }
+            try { SolverBridge.StopOwned(); message = "快捷键 WW：已暂停自动并停止求解器，再双击 W 恢复。"; }
             catch (Exception error)
             {
                 message = "快捷键 WW：自动已暂停，但求解器停止未确认，请手动停止。";
@@ -1084,7 +1099,8 @@ internal sealed class CompanionPanel
             }
         }
         if (decisionStatus != null && message.Length > 0) decisionStatus.Text = message;
-        GD.Print("[SpireCompanion] hotkey_pause");
+        chat.Notify("快捷键：已暂停自动操作，再双击 W 恢复。");
+        GD.Print("[SpireCompanion] hotkey_toggle action=pause");
         Refresh();
     }
 
