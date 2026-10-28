@@ -402,8 +402,8 @@ internal sealed class CompanionPanel
         try
         {
             var reply = await chat.DecideAsync(snapshot, options, token).ConfigureAwait(false);
-            var id = ChoiceParser.Parse(reply, options.Select(option => option.Id).ToArray());
-            mainQueue.Enqueue(() => ApplyAuto(snapshot.Fingerprint, id));
+            var (id, reason) = ChoiceParser.ParseWithReason(reply, options.Select(option => option.Id).ToArray());
+            mainQueue.Enqueue(() => ApplyAuto(snapshot.Fingerprint, id, reason));
         }
         catch (OperationCanceledException)
         {
@@ -426,7 +426,7 @@ internal sealed class CompanionPanel
         }
     }
 
-    private void ApplyAuto(string fingerprint, string? id)
+    private void ApplyAuto(string fingerprint, string? id, string reason)
     {
         autoPending = "";
         if (!autoEnabled) return;
@@ -446,7 +446,11 @@ internal sealed class CompanionPanel
         }
         autoActedRoom = room.Id;
         autoWait = 1.0;
-        GD.Print($"[SpireCompanion] auto_action kind={room.Kind} id={id} room={room.Id}");
+        var chosen = room.Options.First(option => option.Id == id);
+        var why = string.IsNullOrWhiteSpace(reason) ? "" : $"理由：{reason}";
+        chat.Notify($"我选了「{chosen.Name}」，{why}".TrimEnd('，'));
+        decisionStatus.Text = $"自动选择：「{chosen.Name}」 {why}";
+        GD.Print($"[SpireCompanion] auto_action kind={room.Kind} id={id} room={room.Id} reason={reason}");
         switch (room.Kind)
         {
             case "Reward" when int.TryParse(id, out var index): ExecuteReward(index); break;

@@ -287,6 +287,9 @@ internal sealed class ChatPanel : IDisposable
     public Task<string> DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, CancellationToken token) =>
         client.DecideAsync(settings, key.Text, snapshot, options, token);
 
+    /// <summary>Auto-mode note in the conversation; not added to model history.</summary>
+    public void Notify(string text) => Append("自动", text);
+
     public void Cancel()
     {
         if (!busy) return;
