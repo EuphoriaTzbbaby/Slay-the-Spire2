@@ -133,6 +133,38 @@ internal static class ChatChecks
             }
             catch (ModelReplyException error) { Require(error.Message.Contains("推理内容")); }
         });
+        await Check("Screen guidance is specific to the current interface", () =>
+        {
+            var combat = new GameSnapshot("CombatRoom", "铁甲战士", 60, 80, 168, ["打击"], "1:Player", true, "")
+            { Cards = [new CardView(0, "STRIKE", "打击", "1", false)], Enemies = [new EnemyView(0, "SLIME", "海洋混混", 26, 44, 0)] };
+            var eventRoom = combat with { Room = new RoomView("Event", "金色神像", "一座神像。", [new RoomOptionView("0", "祈祷", "获得最大生命", false)]) };
+            var shop = combat with { Room = new RoomView("Shop", "商店", "", [new RoomOptionView("0", "打击", "50 金币", false)]) };
+            var reward = combat with { Room = new RoomView("Reward", "卡牌奖励", "", [new RoomOptionView("0", "重击", "费用 2", false)]) };
+            var rest = combat with { Room = new RoomView("Rest", "休息点", "", [new RoomOptionView("0", "休息", "回复生命", false)]) };
+            var map = combat with { Room = new RoomView("Map", "地图", "", [new RoomOptionView("0", "精英", "可达节点", false)]) };
+            var texts = new[] { ScreenGuidance.For(combat), ScreenGuidance.For(eventRoom), ScreenGuidance.For(shop),
+                ScreenGuidance.For(reward), ScreenGuidance.For(rest), ScreenGuidance.For(map) };
+            Require(texts.All(text => text.Length > 20));
+            Require(texts.Distinct().Count() == texts.Length);
+            Require(ScreenGuidance.For(shop).Contains("价格"));
+            Require(ScreenGuidance.For(map).Contains("可达节点"));
+            Require(ScreenGuidance.For(combat) == ScreenGuidance.Combat);
+            Require(ScreenGuidance.For(new GameSnapshot("主菜单", "无", 0, 0, 0, [], "无", false, "")) == ScreenGuidance.General);
+            return Task.CompletedTask;
+        });
+        await Check("Chat request carries the guidance for the current screen", async () =>
+        {
+            using var client = new ChatClient(new Handler(async (request, token) =>
+            {
+                var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+                var system = body.RootElement.GetProperty("messages")[0].GetProperty("content").GetString()!;
+                Require(system.Contains("当前是商店界面"));
+                Require(system.Contains("当前界面真实"));
+                return Reply();
+            }));
+            var shop = snapshot with { Room = new RoomView("Shop", "商店", "", [new RoomOptionView("0", "打击", "50 金币", false)]) };
+            Require(!string.IsNullOrWhiteSpace(await client.AskAsync(settings, "test-secret", "买什么", shop, [], default)));
+        });
         await Check("Markdown replies become BBCode and raw brackets are escaped", () =>
         {
             var text = ChatMarkdown.ToBbcode("**结论**：先防御。\n- 打 `打击`\n# 标题\n[链接](https://example.com)\n```\ncode\n```\n数值 [2]");
