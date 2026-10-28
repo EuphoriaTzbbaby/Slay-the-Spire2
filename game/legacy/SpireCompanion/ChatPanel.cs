@@ -319,8 +319,10 @@ internal sealed class ChatPanel : IDisposable
                 try { changed = GameReader.Read().Fingerprint != reply.Fingerprint; }
                 catch { changed = true; }
                 var grounding = AnswerGrounding.Check(reply.Text, snapshot);
+                var blocked = reply.Text.StartsWith("（这条回答被拦截", StringComparison.Ordinal);
                 var body = reply.Text;
-                if (body.StartsWith("（这条回答被拦截", StringComparison.Ordinal))
+                if (changed && !blocked) body = "（这条回答基于提问时的界面，当前界面已变化）\n" + body;
+                if (blocked)
                     GD.Print("[SpireCompanion] answer_blocked");
                 else if (grounding.Unknown.Length > 0)
                     body += $"\n\n（提示：以下名称不在当前界面：{string.Join("、", grounding.Unknown)}；可能是模型记忆，请以屏幕为准。）";

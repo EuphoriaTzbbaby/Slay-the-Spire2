@@ -63,9 +63,11 @@ public sealed class ChatClient : IDisposable
             messages.Add(new { role = "user", content = turn.Question });
             messages.Add(new { role = "assistant", content = turn.Answer });
         }
+        var allowed = AllowedNames(snapshot);
         var context = JsonSerializer.Serialize(new
         {
             current_screen = SnapshotBrief.Describe(snapshot),
+            allowed_names = allowed,
             screen_changed = screenChanged,
             question,
             run_plan = plan,
@@ -201,6 +203,7 @@ public sealed class ChatClient : IDisposable
         // Reasoning-capable providers otherwise spend the whole output budget thinking and return an empty body.
         if (structured) payload["thinking"] = new { type = "disabled" };
         if (tools != null) payload["tools"] = tools;
+        payload["temperature"] = structured ? 0d : 0.2d;
         using var request = new HttpRequestMessage(HttpMethod.Post, target);
         if (!string.IsNullOrWhiteSpace(apiKey)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
@@ -268,6 +271,19 @@ public sealed class ChatClient : IDisposable
     }
 
     /// <summary>Some compatible providers return content as a string, others as typed parts.</summary>
+    private static string[] AllowedNames(GameSnapshot snapshot)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(snapshot.Character)) names.Add(snapshot.Character);
+        foreach (var card in snapshot.Cards) names.Add(card.Name);
+        foreach (var card in snapshot.Deck) names.Add(card.Name);
+        foreach (var relic in snapshot.Relics) names.Add(relic.Name);
+        foreach (var potion in snapshot.Potions) names.Add(potion.Name);
+        if (snapshot.Room is { } room)
+            foreach (var option in room.Options) names.Add(option.Name);
+        return names.Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().ToArray();
+    }
+
     private static string? MessageText(JsonElement message)
     {
         if (!message.TryGetProperty("content", out var content)) return null;
