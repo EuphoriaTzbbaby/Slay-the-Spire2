@@ -33,6 +33,7 @@ internal sealed class ChatPanel : IDisposable
     private readonly Button save = new() { Text = "保存设置" };
     private VBoxContainer welcome = null!;
     private bool busy;
+    private PanelContainer? typingBubble;
     private bool cancelRequested;
     private bool disposed;
     private int requestNumber;
@@ -260,6 +261,7 @@ internal sealed class ChatPanel : IDisposable
             int number = ++requestNumber;
             SetBusy(true); info.Text = "搭子正在思考…"; question.Text = "";
             Append("你", text);
+            ShowTyping();
             _ = CompleteAsync(number, next, apiKey, text, snapshot);
         }
         catch (ArgumentException error) { info.Text = error.Message; }
@@ -287,7 +289,7 @@ internal sealed class ChatPanel : IDisposable
         catch (Exception)
         { onMain(() => { if (!disposed && number == requestNumber) info.Text = "模型请求失败，请检查配置后重试。"; }); }
         finally
-        { onMain(() => { if (!disposed) { if (cancelRequested) info.Text = "本次回复已取消。"; SetBusy(false); } }); }
+        { onMain(() => { if (!disposed) { if (cancelRequested) info.Text = "本次回复已取消。"; HideTyping(); SetBusy(false); } }); }
     }
     /// <summary>One-shot structured choice for auto mode; never touches the visible conversation.</summary>
     /// <summary>Current reply style, used for local lines such as the defeat note.</summary>
@@ -311,6 +313,7 @@ internal sealed class ChatPanel : IDisposable
 
     public void Cancel()
     {
+        HideTyping();
         Interrupted?.Invoke();
         if (!busy) return;
         cancelRequested = true;
@@ -361,7 +364,44 @@ internal sealed class ChatPanel : IDisposable
     private void ClearLog()
     {
         foreach (var child in log.GetChildren()) child.Free();
+        typingBubble = null;
         welcome.Visible = true;
+    }
+
+    /// <summary>Visible "typing" bubble so the player can tell the model is still working.</summary>
+    private void ShowTyping()
+    {
+        if (typingBubble != null && GodotObject.IsInstanceValid(typingBubble)) return;
+        welcome.Visible = false;
+        var row = new HBoxContainer();
+        row.AddThemeConstantOverride("separation", 8);
+        if (UiStyle.Avatar is { } face)
+            row.AddChild(new TextureRect
+            {
+                Texture = face, CustomMinimumSize = new Vector2(36, 36), SizeFlagsVertical = Control.SizeFlags.ShrinkBegin,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered
+            });
+        var bubble = new PanelContainer();
+        bubble.AddThemeStyleboxOverride("panel", UiStyle.Box(UiStyle.CardColor, new Color("EFD3A0"), 14, 10));
+        bubble.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        var body = new RichTextLabel
+        {
+            BbcodeEnabled = true, FitContent = true, ScrollActive = false,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        body.AppendText("[color=#B45309][b]搭子[/b][/color]  正在输入…");
+        bubble.AddChild(body);
+        row.AddChild(bubble);
+        log.AddChild(row);
+        typingBubble = bubble;
+        logScroll.SetDeferred(ScrollContainer.PropertyName.ScrollVertical, 1_000_000);
+    }
+
+    private void HideTyping()
+    {
+        if (typingBubble != null && GodotObject.IsInstanceValid(typingBubble))
+            (typingBubble.GetParent() as Godot.Node)?.QueueFree();
+        typingBubble = null;
     }
 
     /// <summary>One-off greeting: mascot on the left, the line in a speech bubble.</summary>

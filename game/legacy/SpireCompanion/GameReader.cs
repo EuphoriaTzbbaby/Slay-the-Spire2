@@ -222,12 +222,15 @@ internal static class GameReader
                 if (inventory == null || NMerchantRoom.Instance?.Inventory?.IsOpen != true)
                     return new RoomView("Shop", "商店", "先打开商店界面", [new RoomOptionView("open", "查看商品", "打开商店界面", false), proceed])
                         { Id = ScreenId(shop) };
-                return new RoomView("Shop", "商店", "金币有限，先买最缺的",
-                    inventory.AllEntries.Select((entry, index) =>
-                    {
-                        var (name, detail) = Entry(entry);
-                        return new RoomOptionView(index.ToString(), name, detail, !entry.IsStocked || !entry.EnoughGold);
-                    }).Append(proceed).ToArray()) { Id = ScreenId(shop) };
+                var items = inventory.AllEntries.Select((entry, index) =>
+                {
+                    var (name, detail) = Entry(entry);
+                    return new RoomOptionView(index.ToString(), name, detail, !entry.IsStocked || !entry.EnoughGold);
+                }).ToList();
+                items.Add(new RoomOptionView("close", "关闭商品界面", "关闭后才能离开商店", false));
+                if (NMerchantRoom.Instance?.ProceedButton?.IsEnabled == true) items.Add(proceed);
+                return new RoomView("Shop", "商店", "金币有限，先买最缺的；不想买了就关界面再离开", items.ToArray())
+                    { Id = ScreenId(shop) };
             case RestSiteRoom rest:
                 return new RoomView("Rest", "休息点", "选择休息或升级",
                     rest.Options.Select((option, index) => new RoomOptionView(
@@ -300,6 +303,14 @@ internal static class GameReader
             ?? throw new InvalidOperationException($"该选项已不在界面中（界面有 {buttons.Count} 个选项）。");
         if (!button.Option.IsEnabled) throw new InvalidOperationException("该选项当前不可用。");
         button.ForceClick();
+    }
+
+    public static void CloseShop()
+    {
+        var room = NMerchantRoom.Instance ?? throw new InvalidOperationException("商店界面已关闭。");
+        var back = FindAll<NBackButton>(room).LastOrDefault(button => button.IsEnabled && button.IsVisibleInTree())
+            ?? throw new InvalidOperationException("找不到关闭商品界面的按钮。");
+        back.ForceClick();
     }
 
     public static void OpenShop()
