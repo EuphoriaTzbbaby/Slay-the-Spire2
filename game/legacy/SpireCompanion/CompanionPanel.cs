@@ -177,7 +177,7 @@ internal sealed class CompanionPanel
         pause.Pressed += PauseAll;
         UiStyle.Secondary(pause); UiStyle.Size(pause, 44);
         controlCard.AddChild(pause);
-        controlCard.AddChild(UiStyle.Hint("快捷键：双击 W 切换暂停/恢复自动操作（暂停时同时停止已接管的求解器）；聊天输入时不会触发。"));
+        controlCard.AddChild(UiStyle.Hint("快捷键：双击 W 依次切换「关 → 开 → 暂停 → 恢复」；暂停时同时停止已接管的求解器；聊天输入时不会触发。"));
 
         var debugCard = UiStyle.Card(body, "调试");
         var export = new Button { Text = "导出当前状态" };
@@ -1209,10 +1209,18 @@ internal sealed class CompanionPanel
                 GD.Print("[SpireCompanion] hotkey_toggle action=solver_stop");
                 return;
             }
-            message = "自动操作未开启，双击 W 无效。";
+            // Off -> on: the shortcut should always do something useful.
+            autoEnabled = true;
+            autoSuspended = false;
+            solverSuspended = false;
+            autoToggle.Text = "局外自动操作：开";
+            autoLabel.Text = "自动：开";
+            new WindowState(autoEnabled, solverAuto, voiceEnabled).Save(windowStatePath);
+            message = "快捷键 WW：已开启自动操作。";
             decisionStatus.Text = message;
             chat.Notify(message);
-            GD.Print("[SpireCompanion] hotkey_toggle action=ignored");
+            GD.Print("[SpireCompanion] hotkey_toggle action=enable");
+            Refresh();
             return;
         }
         if (autoSuspended)
