@@ -137,7 +137,7 @@ internal sealed class CompanionPanel
         autoToggle.Pressed += ToggleAuto;
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
         controlCard.AddChild(autoToggle);
-        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励结算/休息点/商店/选牌/事件/地图/遗物里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。"));
+        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励结算/休息点/商店/选牌/事件/地图/遗物/宝箱里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。发消息或取消会暂停自动，点「恢复自动执行」继续。"));
         resumeAuto = new Button { Text = "恢复自动执行", Visible = false };
         resumeAuto.Pressed += ResumeAuto;
         UiStyle.Primary(resumeAuto); UiStyle.Size(resumeAuto, 42);
@@ -473,7 +473,7 @@ internal sealed class CompanionPanel
         autoEnabled = !autoEnabled;
         autoToggle.Text = autoEnabled ? "局外自动操作：开" : "局外自动操作：关";
         message = autoEnabled
-            ? "已开启局外自动操作：只在奖励、休息点、商店里替你点一次。"
+            ? "已开启局外自动操作：奖励、休息点、商店、选牌、事件、地图、遗物、宝箱各替你操作一次。"
             : "已关闭局外自动操作。";
         if (!autoEnabled) StopAuto();
         else { autoActedKey = ""; autoWait = 0; }

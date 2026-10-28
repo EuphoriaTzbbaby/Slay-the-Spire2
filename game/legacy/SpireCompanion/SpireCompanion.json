@@ -1,5 +1,5 @@
 {
   "id": "SpireCompanion", "name": "尖塔 AI 陪玩（开发版）", "author": "Spire Companion Team",
-  "description": "单人开发入口：状态查看、暂停控制与手动结束回合。尚未接入自动托管。",
+  "description": "单人陪玩：读局势问答、局外自动操作、战斗交给 CombatSolver。F9 打开窗口。",
   "version": "0.1.0", "has_pck": false, "has_dll": true, "affects_gameplay": true
 }
