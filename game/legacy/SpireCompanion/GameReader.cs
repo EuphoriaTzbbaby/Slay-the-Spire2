@@ -23,6 +23,7 @@ using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
@@ -104,6 +105,16 @@ internal static class GameReader
                 $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
                 (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray());
             return new RoomView("Select", StripTags(prompt), "选中后需要确认", options) { Id = ScreenId(selectScreen) };
+        }
+        if (NOverlayStack.Instance?.Peek() is NChooseARelicSelection relicScreen)
+        {
+            var holders = FindAll<NRelicBasicHolder>(relicScreen).ToList();
+            var options = holders.Select((holder, index) => new RoomOptionView(index.ToString(),
+                Text(holder.Relic?.Model?.Title), Text(holder.Relic?.Model?.DynamicDescription), false)).ToList();
+            var skip = relicScreen.GetNodeOrNull<NClickableControl>("SkipButton");
+            if (skip is { IsEnabled: true, Visible: true })
+                options.Add(new RoomOptionView("skip", "跳过这个遗物", "不拿遗物，继续前进", false));
+            return new RoomView("Relic", "选择遗物", "只能选一个，选中后立即获得", options.ToArray()) { Id = ScreenId(relicScreen) };
         }
         if (NOverlayStack.Instance?.Peek() is NCardRewardSelectionScreen rewardScreen)
         {
@@ -269,6 +280,24 @@ internal static class GameReader
 
     private static string StripTags(string value) =>
         System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", "");
+
+    public static void SelectRelic(int index)
+    {
+        var screen = NOverlayStack.Instance?.Peek() as NChooseARelicSelection
+            ?? throw new InvalidOperationException("遗物选择界面已关闭。");
+        var holders = FindAll<NRelicBasicHolder>(screen).ToList();
+        if (index < 0 || index >= holders.Count) throw new InvalidOperationException("该遗物已不在候选中。");
+        holders[index].ForceClick();
+    }
+
+    public static void SkipRelic()
+    {
+        var screen = NOverlayStack.Instance?.Peek() as NChooseARelicSelection
+            ?? throw new InvalidOperationException("遗物选择界面已关闭。");
+        var skip = screen.GetNodeOrNull<NClickableControl>("SkipButton");
+        if (skip is not { IsEnabled: true }) throw new InvalidOperationException("这个遗物选择不能跳过。");
+        skip.ForceClick();
+    }
 
     public static void SelectEventOption(int index)
     {

@@ -116,7 +116,7 @@ internal sealed class CompanionPanel
         autoToggle.Pressed += ToggleAuto;
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
         controlCard.AddChild(autoToggle);
-        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励/休息点/商店/选牌/事件/地图里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。"));
+        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励/休息点/商店/选牌/事件/地图/遗物里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。"));
         solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
         solverStart.Pressed += StartSolver;
         UiStyle.Primary(solverStart); UiStyle.Size(solverStart, 44);
@@ -228,7 +228,7 @@ internal sealed class CompanionPanel
     private void UpdateDecision(GameSnapshot next)
     {
         var room = next.Room;
-        if (room is null || room.Options.Length == 0 || room.Kind is not ("Reward" or "Rest" or "Shop" or "Select" or "Event" or "Map"))
+        if (room is null || room.Options.Length == 0 || room.Kind is not ("Reward" or "Rest" or "Shop" or "Select" or "Event" or "Map" or "Relic"))
         {
             decisionCard.Visible = false;
             decisionSignature = "";
@@ -249,6 +249,7 @@ internal sealed class CompanionPanel
                 case "Select": BuildSelectButtons(room); break;
                 case "Event": BuildEventButtons(room); break;
                 case "Map": BuildMapButtons(room); break;
+                case "Relic": BuildRelicButtons(room); break;
                 default: BuildShopButtons(room); break;
             }
             decisionStatus.Text = $"检测到 {room.Options.Length} 个可选项，点击后立即执行。";
@@ -315,6 +316,21 @@ internal sealed class CompanionPanel
             if (!int.TryParse(option.Id, out var index)) continue;
             var button = new Button { Text = $"选「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
             button.Pressed += () => ExecuteEvent(index);
+            UiStyle.Secondary(button); UiStyle.Size(button, 42);
+            decisionButtons.AddChild(button);
+        }
+    }
+
+    private void BuildRelicButtons(RoomView room)
+    {
+        foreach (var option in room.Options)
+        {
+            var isSkip = option.Id == "skip";
+            if (!isSkip && !int.TryParse(option.Id, out _)) continue;
+            var detail = option.Detail.Length > 60 ? option.Detail[..60] + "…" : option.Detail;
+            var button = new Button { Text = isSkip ? option.Name : $"拿「{option.Name}」 · {detail}" };
+            if (isSkip) button.Pressed += ExecuteSkipRelic;
+            else if (int.TryParse(option.Id, out var index)) button.Pressed += () => ExecuteRelic(index);
             UiStyle.Secondary(button); UiStyle.Size(button, 42);
             decisionButtons.AddChild(button);
         }
@@ -504,6 +520,8 @@ internal sealed class CompanionPanel
             case "Shop": ExecutePurchase(id); break;
             case "Event" when int.TryParse(id, out var eventIndex): ExecuteEvent(eventIndex); break;
             case "Map" when int.TryParse(id, out var mapIndex): ExecuteMap(mapIndex); break;
+            case "Relic" when id == "skip": ExecuteSkipRelic(); break;
+            case "Relic" when int.TryParse(id, out var relicIndex): ExecuteRelic(relicIndex); break;
             case "Select" when int.TryParse(id, out var cardIndex):
                 autoSelectPendingConfirm = true;
                 autoWait = 0.4;
@@ -539,6 +557,32 @@ internal sealed class CompanionPanel
             message = $"确认失败：{error.Message}";
             decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] confirm_select: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecuteRelic(int index)
+    {
+        try { GameReader.SelectRelic(index); message = "已选择该遗物。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=relic id={index} ok"); }
+        catch (Exception error)
+        {
+            message = $"遗物选择失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] relic_select: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecuteSkipRelic()
+    {
+        try { GameReader.SkipRelic(); message = "已跳过该遗物。"; decisionStatus.Text = message; GD.Print("[SpireCompanion] decision_result action=skip_relic ok"); }
+        catch (Exception error)
+        {
+            message = $"跳过遗物失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] relic_skip: {error}");
         }
         decisionSignature = "";
         Refresh();
