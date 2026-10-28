@@ -392,38 +392,52 @@ internal sealed class CompanionPanel
         if (room.Options.All(option => option.Locked)) return;
         autoPending = room.Id + "|" + room.Kind;
         autoCts = new CancellationTokenSource();
-        autoCts.CancelAfter(TimeSpan.FromSeconds(20));
+        autoCts.CancelAfter(TimeSpan.FromSeconds(30));
         if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
         _ = DecideAsync(next, room.Options, autoCts.Token);
     }
 
     private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, CancellationToken token)
     {
-        try
+        var ids = options.Select(option => option.Id).ToArray();
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            var reply = await chat.DecideAsync(snapshot, options, token).ConfigureAwait(false);
-            var (id, reason) = ChoiceParser.ParseWithReason(reply, options.Select(option => option.Id).ToArray());
-            mainQueue.Enqueue(() => ApplyAuto(snapshot.Fingerprint, id, reason));
-        }
-        catch (OperationCanceledException)
-        {
-            mainQueue.Enqueue(() =>
+            try
             {
-                autoPending = "";
-                if (!autoEnabled) return;
-                message = "自动决策超时，已停止自动操作；可手动点击，或稍后重新开启。";
-                StopAuto();
-            });
-        }
-        catch (Exception error)
-        {
-            mainQueue.Enqueue(() =>
+                var reply = await chat.DecideAsync(snapshot, options, token).ConfigureAwait(false);
+                var (id, reason) = ChoiceParser.ParseWithReason(reply, ids);
+                if (id != null)
+                {
+                    mainQueue.Enqueue(() => ApplyAuto(snapshot.Fingerprint, id, reason));
+                    return;
+                }
+                // One retry: a malformed reply is usually noise, not a broken config.
+                GD.PushWarning($"[SpireCompanion] auto_invalid attempt={attempt} reply={Truncate(reply)}");
+            }
+            catch (OperationCanceledException)
             {
-                autoPending = "";
-                message = $"自动决策失败：{error.Message}";
-                StopAuto();
-            });
+                mainQueue.Enqueue(() => StopAutoWith("自动决策超时，已停止自动操作。可以手动点，或重新开启。"));
+                return;
+            }
+            catch (Exception error)
+            {
+                GD.PushError($"[SpireCompanion] auto_failed error={error.Message}");
+                mainQueue.Enqueue(() => StopAutoWith($"自动决策失败：{error.Message}"));
+                return;
+            }
         }
+        mainQueue.Enqueue(() => StopAutoWith("自动决策两次都没给出合法选项，已停止自动操作。"));
+    }
+
+    private static string Truncate(string value) => value.Length <= 200 ? value : value[..200];
+
+    private void StopAutoWith(string notice)
+    {
+        message = notice;
+        if (decisionStatus != null) decisionStatus.Text = notice;
+        chat.Notify(notice);
+        GD.PushWarning($"[SpireCompanion] auto_stop notice={notice}");
+        StopAuto();
     }
 
     private void ApplyAuto(string fingerprint, string? id, string reason)
@@ -432,8 +446,7 @@ internal sealed class CompanionPanel
         if (!autoEnabled) return;
         if (id == null)
         {
-            StopAuto();
-            message = "自动决策未返回合法选项，已停止自动操作。";
+            StopAutoWith("自动决策未返回合法选项，已停止自动操作。");
             return;
         }
         var fresh = GameReader.Read();
