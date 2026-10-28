@@ -62,6 +62,8 @@ internal sealed class CompanionPanel
     private TabContainer tabs = null!;
     private double remaining;
     private bool f9Down;
+    private bool wDown;
+    private double lastWTap = -10;
     private string message = "只读建议：不会自动出牌，自动执行交给求解器。";
 
     public CompanionPanel(SceneTree tree)
@@ -156,7 +158,7 @@ internal sealed class CompanionPanel
         pause.Pressed += PauseAll;
         UiStyle.Secondary(pause); UiStyle.Size(pause, 44);
         controlCard.AddChild(pause);
-        controlCard.AddChild(UiStyle.Hint("本模块只给文字建议；战斗执行由求解器负责，不经过模型判断。"));
+        controlCard.AddChild(UiStyle.Hint("快捷键：双击 W 暂停自动操作并停止已接管的求解器；点「恢复自动执行」继续。"));
 
         var debugCard = UiStyle.Card(body, "调试");
         var export = new Button { Text = "导出当前状态" };
@@ -250,6 +252,19 @@ internal sealed class CompanionPanel
         bool pressed = Input.IsPhysicalKeyPressed(Key.F9);
         if (pressed && !f9Down) panel.Visible = !panel.Visible;
         f9Down = pressed;
+        var focus = panel.GetViewport()?.GuiGetFocusOwner();
+        if (focus is not (LineEdit or TextEdit))
+        {
+            bool wPressed = Input.IsPhysicalKeyPressed(Key.W);
+            if (wPressed && !wDown)
+            {
+                var now = Time.GetTicksMsec() / 1000.0;
+                if (now - lastWTap < 0.45) { lastWTap = -10; HotkeyPause(); }
+                else lastWTap = now;
+            }
+            wDown = wPressed;
+        }
+        else { wDown = false; lastWTap = -10; }
         remaining -= delta;
         if (remaining <= 0) { remaining = 0.25; Refresh(); }
     }
@@ -850,6 +865,7 @@ internal sealed class CompanionPanel
             case "Reward" when int.TryParse(id, out var index): ExecuteReward(index); break;
             case "Rest" or "Shop" when id == "proceed": ExecuteProceed(); break;
             case "Shop" when id == "open": ExecuteOpenShop(); break;
+            case "Shop" when id == "close": ExecuteCloseShop(); break;
             case "Rest": ExecuteRest(id); break;
             case "Shop":
                 pendingShopId = id;
@@ -1051,6 +1067,24 @@ internal sealed class CompanionPanel
             GD.PushError($"[SpireCompanion] skip_reward: {error}");
         }
         decisionSignature = "";
+        Refresh();
+    }
+
+    /// <summary>Double-tap W: suspend auto (resumable) and stop a solver takeover.</summary>
+    private void HotkeyPause()
+    {
+        if (autoEnabled) SuspendAuto("快捷键 WW：已暂停自动操作，点「恢复自动执行」继续。");
+        if (SolverBridge.Owned)
+        {
+            try { SolverBridge.StopOwned(); message = "快捷键 WW：已暂停自动并停止求解器。"; }
+            catch (Exception error)
+            {
+                message = "快捷键 WW：自动已暂停，但求解器停止未确认，请手动停止。";
+                GD.PushError($"[SpireCompanion] hotkey_solver_stop: {error}");
+            }
+        }
+        if (decisionStatus != null && message.Length > 0) decisionStatus.Text = message;
+        GD.Print("[SpireCompanion] hotkey_pause");
         Refresh();
     }
 
