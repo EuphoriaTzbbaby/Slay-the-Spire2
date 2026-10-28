@@ -236,7 +236,7 @@ internal static class ChatChecks
                 };
             }));
             var reply = await client.AskAsync(settings, "k", "重锤什么效果", snapshot, [], default, "",
-                cardLookup: name => name == "重锤" ? "重锤（3 费）：造成32点伤害" : null);
+                toolExecutor: (name, argument) => name == "lookup_card" && argument == "重锤" ? "重锤（3 费）：造成32点伤害" : null);
             Require(reply.Contains("32"));
             Require(requests == 2);
             Require(secondBody != null);

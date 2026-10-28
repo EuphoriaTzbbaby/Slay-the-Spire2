@@ -507,6 +507,50 @@ internal static class GameReader
         }
     }
 
+    public static string? LookupRelicText(string name) => LookupCatalog(name, ModelDb.AllRelics.Select(relic => (Text(relic.Title), Plain(Text(relic.DynamicDescription)))));
+    public static string? LookupPotionText(string name) => LookupCatalog(name, ModelDb.AllPotions.Select(potion => (Text(potion.Title), Plain(Text(potion.DynamicDescription)))));
+
+    private static string? LookupCatalog(string name, IEnumerable<(string Title, string Text)> entries)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        try
+        {
+            (string Title, string Text)? exact = null;
+            (string Title, string Text)? partial = null;
+            foreach (var entry in entries)
+            {
+                if (string.Equals(entry.Title, name, StringComparison.Ordinal)) { exact = entry; break; }
+                if (partial == null && (entry.Title.Contains(name, StringComparison.Ordinal) || name.Contains(entry.Title, StringComparison.Ordinal)))
+                    partial = entry;
+            }
+            var found = exact ?? partial;
+            return found == null ? null : $"{found.Value.Title}：{Shorten(found.Value.Text, 200)}";
+        }
+        catch (Exception error)
+        {
+            Godot.GD.PushWarning($"[SpireCompanion] catalog_lookup: {error.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>Read-only live state slices for the chat tools.</summary>
+    public static string QueryState(string scope)
+    {
+        var snapshot = Read();
+        var text = (scope ?? "screen").Trim().ToLowerInvariant() switch
+        {
+            "hand" => "手牌：" + (snapshot.Cards.Length == 0 ? "无" : string.Join(" | ", snapshot.Cards.Select(card => $"{card.Name}({card.Cost})：{Shorten(card.Text, 100)}"))),
+            "deck" => $"牌组 {snapshot.Deck.Length} 张：" + string.Join("、", snapshot.Deck.Select(card => card.Name)),
+            "relics" => "遗物：" + (snapshot.Relics.Length == 0 ? "无" : string.Join(" | ", snapshot.Relics.Select(relic => $"{relic.Name}：{Shorten(relic.Text, 80)}"))),
+            "potions" => "药水：" + (snapshot.Potions.Length == 0 ? "无" : string.Join(" | ", snapshot.Potions.Select(potion => $"{potion.Name}：{Shorten(potion.Text, 80)}"))),
+            "enemies" => "敌人：" + (snapshot.Enemies.Length == 0 ? "无" : string.Join("、", snapshot.Enemies.Select(enemy => $"{enemy.Name} {enemy.Hp}/{enemy.MaxHp} 格挡{enemy.Block}"))),
+            "run" => $"场景 {snapshot.Scene}；{snapshot.Character} HP {snapshot.Hp}/{snapshot.MaxHp}；金币 {snapshot.Gold}；能量 {snapshot.Energy?.ToString() ?? "—"}；格挡 {snapshot.Block}；战斗阶段 {snapshot.CombatTurn}",
+            "map" or "screen" => SnapshotBrief.Describe(snapshot),
+            _ => SnapshotBrief.Describe(snapshot)
+        };
+        return Shorten(text, 1500);
+    }
+
     public static bool IsGameOver() => NOverlayStack.Instance?.Peek() is NGameOverScreen;
 
     public static bool CanProceed()

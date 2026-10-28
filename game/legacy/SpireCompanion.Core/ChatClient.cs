@@ -40,7 +40,7 @@ public sealed class ChatClient : IDisposable
 
     public async Task<string> AskAsync(ChatSettings settings, string apiKey, string question, GameSnapshot snapshot,
         IReadOnlyList<ChatTurn> history, CancellationToken cancellation, string plan = "", bool screenChanged = false,
-        Func<string, string?>? cardLookup = null, Action<string>? toolTrace = null)
+        Func<string, string, string?>? toolExecutor = null, Action<string>? toolTrace = null)
     {
         if (string.IsNullOrWhiteSpace(question) || question.Length > 4000) throw new ArgumentException("请输入 1 到 4000 字的消息。");
         var verbosity = Personality.Instructions(settings.TalkMode);
@@ -53,8 +53,8 @@ public sealed class ChatClient : IDisposable
                 "状态里未包含的字段不代表零或不存在。不要把建议称作全局最优。玩家问到当前未提供的奖励或商店选项时，说明缺少选项信息。" +
                 "如果状态 JSON 里有 Room 字段，那就是当前界面真实的标题、描述与选项，按它回答，并可以逐项比较；不要另编选项。" +
                 "历史对话只用于理解追问，不能作为事实来源；卡牌名称与效果必须逐字来自本轮 snapshot 的 Cards、Deck 或 Room.Options。" +
-                "如果玩家提到的牌不在本轮 snapshot 里，或你不确定某张牌的效果，先调用 lookup_card 查询；查到之前不要凭记忆回答，工具结果才是权威。" +
-                "如果 lookup_card 返回未找到，就直接说没有查到，不要编造。" +
+                "如果需要当前快照之外的信息，先调用工具：lookup_card / lookup_relic / lookup_potion 查图鉴，query_state 查实时局面（scope 可为 screen/hand/deck/relics/potions/enemies/run/map）。" +
+                "查到之前不要凭记忆回答，工具结果才是权威；工具返回未找到就直说没有查到，不要编造。" +
                 (screenChanged ? "注意：相对上一轮，当前界面已经变化；历史对话里的卡牌、选项、价格不适用于当前界面，必须以 current_screen 和本轮 snapshot 为准。" : "") +
                 ScreenGuidance.For(snapshot) }
         };
@@ -74,13 +74,13 @@ public sealed class ChatClient : IDisposable
         if (context.Length > 80_000) throw new ArgumentException("当前状态过大，请先缩小提问范围。");
         messages.Add(new { role = "user", content = context });
         string reply;
-        if (cardLookup == null)
+        if (toolExecutor == null)
         {
             reply = await PostAsync(settings, apiKey, messages, cancellation).ConfigureAwait(false);
         }
         else
         {
-            reply = await AskWithToolsAsync(settings, apiKey, messages, cancellation, cardLookup, toolTrace).ConfigureAwait(false);
+            reply = await AskWithToolsAsync(settings, apiKey, messages, cancellation, toolExecutor, toolTrace).ConfigureAwait(false);
         }
         var grounding = AnswerGrounding.Check(reply, snapshot);
         if (grounding.Unknown.Length == 0) return reply;
@@ -115,25 +115,21 @@ public sealed class ChatClient : IDisposable
 
     private static readonly object[] ChatTools =
     [
-        new
-        {
-            type = "function",
-            function = new
-            {
-                name = "lookup_card",
-                description = "查询《杀戮尖塔 2》任意卡牌的官方效果文本（只读）。当前快照没有的卡、或不确定效果时先调用它。",
-                parameters = new
-                {
-                    type = "object",
-                    properties = new { name = new { type = "string", description = "卡牌中文名，例如 重锤" } },
-                    required = new[] { "name" }
-                }
-            }
-        }
+        Function("lookup_card", "查询任意卡牌的官方效果文本（只读）。",
+            new { name = new { type = "string", description = "卡牌中文名，例如 重锤" } }, "name"),
+        Function("lookup_relic", "查询任意遗物的官方效果文本（只读）。",
+            new { name = new { type = "string", description = "遗物中文名" } }, "name"),
+        Function("lookup_potion", "查询任意药水的官方效果文本（只读）。",
+            new { name = new { type = "string", description = "药水中文名" } }, "name"),
+        Function("query_state", "读取实时游戏状态（只读）。",
+            new { scope = new { type = "string", description = "screen/hand/deck/relics/potions/enemies/run/map/all" } }, "scope")
     ];
 
+    private static object Function(string name, string description, object properties, string required)
+        => new { type = "function", function = new { name, description, parameters = new { type = "object", properties, required = new[] { required } } } };
+
     private async Task<string> AskWithToolsAsync(ChatSettings settings, string apiKey, List<object> messages,
-        CancellationToken cancellation, Func<string, string?> cardLookup, Action<string>? toolTrace)
+        CancellationToken cancellation, Func<string, string, string?> toolExecutor, Action<string>? toolTrace)
     {
         for (int round = 0; round < 3; round++)
         {
@@ -153,9 +149,8 @@ public sealed class ChatClient : IDisposable
             messages.Add(new { role = "assistant", content = (string?)null, tool_calls = calls.Select(call => call.Raw).ToArray() });
             foreach (var call in calls)
             {
-                var result = call.Name == "lookup_card"
-                    ? cardLookup(call.Argument) ?? $"未找到卡牌「{call.Argument}」，请直接说明没有查到。"
-                    : $"未知工具：{call.Name}";
+                var result = toolExecutor(call.Name, call.Argument)
+                    ?? $"未找到「{call.Argument}」，请直接说明没有查到。";
                 toolTrace?.Invoke($"{call.Name}({call.Argument}) -> {(result.Length > 60 ? result[..60] : result)}");
                 messages.Add(new { role = "tool", tool_call_id = call.Id, content = result });
             }
@@ -163,7 +158,7 @@ public sealed class ChatClient : IDisposable
         throw new ModelReplyException("工具调用次数过多，请把问题拆开再问。");
     }
 
-    private sealed record ToolCall(string Id, string Name, string Argument, JsonElement Raw);
+    private sealed record ToolCall(string Id, string Name, string Argument, string ArgumentsJson, JsonElement Raw);
 
     private static List<ToolCall> ParseToolCalls(JsonElement message)
     {
@@ -180,9 +175,10 @@ public sealed class ChatClient : IDisposable
             {
                 using var args = JsonDocument.Parse(argsRaw);
                 if (args.RootElement.TryGetProperty("name", out var nameValue)) argument = nameValue.GetString() ?? "";
+                else if (args.RootElement.TryGetProperty("scope", out var scopeValue)) argument = scopeValue.GetString() ?? "";
             }
             catch (JsonException) { }
-            calls.Add(new ToolCall(id, name, argument, item.Clone()));
+            calls.Add(new ToolCall(id, name, argument, argsRaw, item.Clone()));
         }
         return calls;
     }

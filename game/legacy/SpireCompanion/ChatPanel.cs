@@ -263,17 +263,24 @@ internal sealed class ChatPanel : IDisposable
 
     public bool Busy => busy;
 
-    /// <summary>The tool callback runs on a worker thread; marshal the game read to the main thread.</summary>
-    private string? LookupCardOnMain(string name)
+    /// <summary>Tool calls run on a worker thread; marshal the read-only game query to the main thread.</summary>
+    private string? ToolOnMain(string name, string argument)
     {
-        if (NGame.IsMainThread()) return GameReader.LookupCardText(name);
         string? result = null;
-        using var done = new ManualResetEventSlim();
-        onMain(() =>
+        void Run()
         {
-            try { result = GameReader.LookupCardText(name); }
-            finally { done.Set(); }
-        });
+            result = name switch
+            {
+                "lookup_card" => GameReader.LookupCardText(argument),
+                "lookup_relic" => GameReader.LookupRelicText(argument),
+                "lookup_potion" => GameReader.LookupPotionText(argument),
+                "query_state" => GameReader.QueryState(argument),
+                _ => null
+            };
+        }
+        if (NGame.IsMainThread()) { Run(); return result; }
+        using var done = new ManualResetEventSlim();
+        onMain(() => { try { Run(); } finally { done.Set(); } });
         return done.Wait(TimeSpan.FromSeconds(3)) ? result : null;
     }
 
@@ -304,7 +311,7 @@ internal sealed class ChatPanel : IDisposable
             var screenChanged = lastScreenKey.Length > 0 && screenKey != lastScreenKey;
             lastScreenKey = screenKey;
             var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "", screenChanged,
-                LookupCardOnMain, message => Godot.GD.Print($"[SpireCompanion] chat_tool {message}")).ConfigureAwait(false);
+                ToolOnMain, message => Godot.GD.Print($"[SpireCompanion] chat_tool {message}")).ConfigureAwait(false);
             onMain(() =>
             {
                 if (disposed || number != requestNumber) return;
