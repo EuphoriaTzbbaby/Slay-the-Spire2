@@ -6,6 +6,7 @@ using System.Text.Json;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Localization;
@@ -105,7 +106,7 @@ internal static class GameReader
             var options = RoomOptions.MergeDuplicates(cards.Select((card, index) => new RoomOptionView(
                 index.ToString(), Text(card.Title),
                 $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(Plain(Text(card.Description)), 100), false)).ToArray());
+                (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(CardText(card), 100), false)).ToArray());
             return new RoomView("Select", StripTags(prompt), "选中后需要确认", options) { Id = ScreenId(selectScreen) };
         }
         if (NOverlayStack.Instance?.Peek() is NRewardsScreen rewardsScreen)
@@ -142,7 +143,7 @@ internal static class GameReader
                 return new RoomView("Reward", "卡牌奖励", "选择一张加入牌组，或跳过",
                     cards.Select((card, index) => new RoomOptionView(index.ToString(), Text(card.Title),
                         $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                        (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(Plain(Text(card.Description)), 100), false)).ToArray())
+                        (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(CardText(card), 100), false)).ToArray())
                     { Id = ScreenId(rewardScreen) };
         }
         switch (run.CurrentRoom)
@@ -460,7 +461,19 @@ internal static class GameReader
 
     private static CardView Card(CardModel card, int index, bool inHand) => new(index, card.Id.Entry, Text(card.Title),
         card.EnergyCost.CostsX ? "X" : inHand ? card.EnergyCost.GetAmountToSpend().ToString() : "未在手牌，不计算动态费用",
-        card.IsUpgraded, inHand ? Shorten(Plain(Text(card.Description)), 140) : "");
+        card.IsUpgraded, inHand ? Shorten(CardText(card), 140) : "");
+
+    /// <summary>CardModel.Description is a template; the pile-aware call renders the real numbers.</summary>
+    private static string CardText(CardModel card)
+    {
+        try { return Shorten(Plain(card.GetDescriptionForPile(PileType.Hand)).Replace("\n", " "), 140); }
+        catch (Exception error)
+        {
+            Godot.GD.PushWarning($"[SpireCompanion] card_text: {error.Message}");
+            try { return Shorten(Plain(Text(card.Description)).Replace("\n", " "), 140); }
+            catch { return ""; }
+        }
+    }
 
     private static string Text(object? value) => value == null ? "未知" : value is LocString loc ? loc.GetFormattedText() : value.ToString() ?? "未知";
 }
