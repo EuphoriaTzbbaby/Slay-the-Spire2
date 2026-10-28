@@ -429,7 +429,13 @@ internal sealed class CompanionPanel
     /// <summary>Auto mode only ever acts on an executable screen, one decision per observed state.</summary>
     private void AutoStep(GameSnapshot next)
     {
-        if (!autoEnabled || SolverBridge.Owned || autoPending.Length > 0 || autoWait > 0) return;
+        if (!autoEnabled || SolverBridge.Owned) return;
+        if (autoPending.Length > 0 || autoWait > 0)
+        {
+            if (next.Room is { } waiting && waiting.Options.Length > 0)
+                GD.Print($"[SpireCompanion] auto_skip pending={autoPending.Length > 0} wait={autoWait:F2} kind={waiting.Kind}");
+            return;
+        }
         var room = next.Room;
         if (room is null) { autoSelectPendingConfirm = false; return; }
         if (room.Kind != "Select") autoSelectPendingConfirm = false;
@@ -449,6 +455,7 @@ internal sealed class CompanionPanel
         if (room.Kind is not ("Reward" or "Rest" or "Shop" or "Select")) return;
         if (room.Options.All(option => option.Locked)) return;
         autoPending = optionKey;
+        GD.Print($"[SpireCompanion] auto_request kind={room.Kind} options={room.Options.Length} room={room.Id}");
         autoCts = new CancellationTokenSource();
         autoCts.CancelAfter(TimeSpan.FromSeconds(30));
         if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
@@ -466,7 +473,7 @@ internal sealed class CompanionPanel
                 var (id, reason) = ChoiceParser.ParseWithReason(reply, ids);
                 if (id != null)
                 {
-                    mainQueue.Enqueue(() => ApplyAuto(snapshot.Fingerprint, id, reason));
+                    mainQueue.Enqueue(() => ApplyAuto(snapshot, id, reason));
                     return;
                 }
                 // One retry: a malformed reply is usually noise, not a broken config.
@@ -503,7 +510,7 @@ internal sealed class CompanionPanel
         StopAuto();
     }
 
-    private void ApplyAuto(string fingerprint, string? id, string reason)
+    private void ApplyAuto(GameSnapshot snapshot, string? id, string reason)
     {
         autoPending = "";
         if (!autoEnabled) return;
@@ -513,11 +520,24 @@ internal sealed class CompanionPanel
             return;
         }
         var fresh = GameReader.Read();
-        if (fresh.Fingerprint != fingerprint) { message = "状态已变化，已丢弃这条自动决策。"; return; }
         var room = fresh.Room;
-        if (room is null || !room.Options.Any(option => option.Id == id && !option.Locked))
+        var snapshotRoom = snapshot.Room;
+        if (room is null || snapshotRoom is null || room.Kind != snapshotRoom.Kind)
+        {
+            message = "界面已切换，已丢弃这条自动决策。";
+            GD.PushWarning($"[SpireCompanion] auto_discard reason=screen_changed was={snapshotRoom?.Kind} now={room?.Kind}");
+            return;
+        }
+        if (room.Id.Length > 0 && snapshotRoom.Id.Length > 0 && room.Id != snapshotRoom.Id)
+        {
+            message = "界面已刷新，已丢弃这条自动决策。";
+            GD.PushWarning($"[SpireCompanion] auto_discard reason=screen_id was={snapshotRoom.Id} now={room.Id}");
+            return;
+        }
+        if (!room.Options.Any(option => option.Id == id && !option.Locked))
         {
             message = "选项已失效，已丢弃这条自动决策。";
+            GD.PushWarning($"[SpireCompanion] auto_discard reason=option_missing id={id} kind={room.Kind} options={string.Join("|", room.Options.Select(option => option.Id))}");
             return;
         }
         autoActedKey = room.Id + "|" + string.Join(",", room.Options.Select(option => option.Id + option.Name + option.Locked));
