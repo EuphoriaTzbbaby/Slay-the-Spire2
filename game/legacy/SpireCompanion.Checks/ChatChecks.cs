@@ -269,6 +269,14 @@ internal static class ChatChecks
             Require(toolContent != null && toolContent.Contains("重锤（3 费）"));
             return;
         });
+        await Check("Character guidance differs per character", () =>
+        {
+            Require(CharacterGuidance.For("铁甲战士").Contains("力量"));
+            Require(CharacterGuidance.For("静默猎手").Contains("中毒"));
+            Require(CharacterGuidance.For("故障机器人").Contains("充能"));
+            Require(CharacterGuidance.For("未知角色") == "");
+            return Task.CompletedTask;
+        });
         await Check("Screen brief puts the current options in readable text", () =>
         {
             var snapshot = new GameSnapshot("RewardRoom", "铁甲战士", 60, 80, 100, ["打击"], "无", false, "")
