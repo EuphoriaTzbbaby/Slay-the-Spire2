@@ -105,7 +105,7 @@ internal static class GameReader
             var options = RoomOptions.MergeDuplicates(cards.Select((card, index) => new RoomOptionView(
                 index.ToString(), Text(card.Title),
                 $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray());
+                (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(Plain(Text(card.Description)), 100), false)).ToArray());
             return new RoomView("Select", StripTags(prompt), "选中后需要确认", options) { Id = ScreenId(selectScreen) };
         }
         if (NOverlayStack.Instance?.Peek() is NRewardsScreen rewardsScreen)
@@ -134,7 +134,8 @@ internal static class GameReader
                 return new RoomView("Reward", "卡牌奖励", "选择一张加入牌组，或跳过",
                     cards.Select((card, index) => new RoomOptionView(index.ToString(), Text(card.Title),
                         $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                        (card.IsUpgraded ? " · 已升级" : ""), false)).ToArray()) { Id = ScreenId(rewardScreen) };
+                        (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(Plain(Text(card.Description)), 100), false)).ToArray())
+                    { Id = ScreenId(rewardScreen) };
         }
         switch (run.CurrentRoom)
         {
@@ -294,6 +295,12 @@ internal static class GameReader
     private static RoomOptionView LeaveOption(bool available) =>
         new("proceed", "离开 / 继续前进", available ? "不在这里继续操作" : "当前还不能离开", !available);
 
+    /// <summary>LocString text can carry BBCode; the model should read plain prose.</summary>
+    private static string Plain(string value) => System.Text.RegularExpressions.Regex.Replace(
+        System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", ""), "\\[(?:/|lb|rb)[^\\]]*\\]|\\[[a-z]+[^\\]]*\\]", "");
+
+    private static string Shorten(string value, int limit) => value.Length <= limit ? value : value[..limit] + "…";
+
     private static string ScreenId(object instance) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(instance).ToString();
 
     private static string StripTags(string value) =>
@@ -444,7 +451,8 @@ internal static class GameReader
     }
 
     private static CardView Card(CardModel card, int index, bool inHand) => new(index, card.Id.Entry, Text(card.Title),
-        card.EnergyCost.CostsX ? "X" : inHand ? card.EnergyCost.GetAmountToSpend().ToString() : "未在手牌，不计算动态费用", card.IsUpgraded);
+        card.EnergyCost.CostsX ? "X" : inHand ? card.EnergyCost.GetAmountToSpend().ToString() : "未在手牌，不计算动态费用",
+        card.IsUpgraded, inHand ? Shorten(Plain(Text(card.Description)), 140) : "");
 
     private static string Text(object? value) => value == null ? "未知" : value is LocString loc ? loc.GetFormattedText() : value.ToString() ?? "未知";
 }
