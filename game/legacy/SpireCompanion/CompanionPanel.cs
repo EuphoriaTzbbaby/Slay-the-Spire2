@@ -1,4 +1,6 @@
 using Godot;
+using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Runs;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using SpireCompanion.Core;
@@ -61,6 +63,8 @@ internal sealed class CompanionPanel
     private readonly VoiceClient voice = new();
     private readonly RunPlan plan = new();
     private Label planLabel = null!;
+    private string planPath = "";
+    private bool reviewInFlight;
     private string pinnedName = "";
     private string lastDirective = "";
     private double pinnedAt;
@@ -194,6 +198,8 @@ internal sealed class CompanionPanel
         planLabel = new Label { Text = "本局计划：未设置", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         planLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
         controlCard.AddChild(planLabel);
+        planPath = Path.Combine(ProjectSettings.GlobalizePath("user://spire-companion"), "run-plan.json");
+        LoadPlan();
 
         layer.AddChild(panel);
         toggle = new Button
@@ -1173,6 +1179,96 @@ internal sealed class CompanionPanel
     }
 
     /// <summary>Remember an explicit instruction ("选重锤") so the next matching decision obeys it.</summary>
+    private void LoadPlan()
+    {
+        try
+        {
+            if (!File.Exists(planPath)) return;
+            var saved = System.Text.Json.JsonSerializer.Deserialize<PlanFile>(File.ReadAllText(planPath));
+            if (saved == null) return;
+            plan.Restore(saved.Goal, saved.Needs, saved.Rules, saved.LastReview);
+            plan.Floor = saved.Floor;
+            plan.RunKey = saved.RunKey;
+            UpdatePlanLabel();
+        }
+        catch (Exception error) { GD.PushWarning($"[SpireCompanion] plan_load: {error.Message}"); }
+    }
+
+    private void SavePlan()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(planPath)!);
+            File.WriteAllText(planPath, System.Text.Json.JsonSerializer.Serialize(new PlanFile(
+                plan.Goal, plan.Needs.ToArray(), plan.Rules.ToArray(), plan.LastReview, plan.Floor, plan.RunKey)));
+        }
+        catch (Exception error) { GD.PushWarning($"[SpireCompanion] plan_save: {error.Message}"); }
+    }
+
+    private sealed record PlanFile(string Goal, string[] Needs, string[] Rules, string LastReview, int Floor, string RunKey);
+
+    private void UpdatePlanLabel()
+    {
+        if (planLabel == null) return;
+        var described = plan.Describe();
+        planLabel.Text = "本局计划：" + (described.Length == 0 ? "未设置" : described);
+    }
+
+    /// <summary>Load/persist the run plan and request one short review when a new floor starts.</summary>
+    private void SyncPlan(GameSnapshot next)
+    {
+        var manager = RunManager.Instance;
+        var run = manager.IsInProgress ? manager.DebugOnlyGetState() : null;
+        if (run == null) return;
+        var me = LocalContext.GetMe(run);
+        var title = me?.Character?.Title;
+        var key = $"{(title != null ? title.GetFormattedText() : "?")}|{run.AscensionLevel}";
+        if (plan.RunKey != key || (run.TotalFloor <= 1 && plan.Floor > 1))
+        {
+            plan.Clear();
+            plan.RunKey = key;
+            plan.Floor = run.TotalFloor;
+            SavePlan();
+            UpdatePlanLabel();
+            return;
+        }
+        if (run.TotalFloor == plan.Floor) return;
+        var previous = plan.Floor;
+        plan.Floor = run.TotalFloor;
+        SavePlan();
+        if (previous > 0 && run.TotalFloor > previous && HasContent)
+            RequestFloorReview(next, run.TotalFloor);
+    }
+
+    private bool HasContent => plan.Goal.Length > 0 || plan.Needs.Count > 0 || plan.Rules.Count > 0;
+
+    private void RequestFloorReview(GameSnapshot snapshot, int floor)
+    {
+        if (reviewInFlight) return;
+        reviewInFlight = true;
+        var (config, apiKey) = chat.RequestContext;
+        var occasion = $"刚进入第 {floor} 层，当前计划：{plan.Describe()}。用不超过 50 字指出本层最需要注意的事，并给一条计划调整建议。";
+        var token = new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var text = await chat.CommentAsync(config, apiKey, snapshot, occasion, token).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(text)) return;
+                mainQueue.Enqueue(() =>
+                {
+                    plan.SetReview(text);
+                    SavePlan();
+                    UpdatePlanLabel();
+                    chat.SayProactive($"第 {floor} 层复盘：{text}");
+                    GD.Print($"[SpireCompanion] floor_review floor={floor} text={text}");
+                });
+            }
+            catch (Exception error) { GD.PushWarning($"[SpireCompanion] floor_review_failed: {error.Message}"); }
+            finally { mainQueue.Enqueue(() => reviewInFlight = false); }
+        });
+    }
+
     private void NoteDirective(string text)
     {
         lastDirective = text.Length > 80 ? text[..80] : text;
@@ -1181,6 +1277,7 @@ internal sealed class CompanionPanel
             var described = plan.Describe();
             if (planLabel != null) planLabel.Text = "本局计划：" + (described.Length == 0 ? "未设置" : described);
             chat.Notify("已更新本局计划：" + described);
+            SavePlan();
             GD.Print($"[SpireCompanion] plan_update {described}");
         }
         var target = UserDirective.PinTarget(text);
@@ -1320,6 +1417,7 @@ internal sealed class CompanionPanel
             SolverAutoStep(next);
             AutoStep(next);
             ProactiveStep(next);
+            SyncPlan(next);
             stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "只读建议";
             stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : UiStyle.Good);
             status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n阶段：{(next.CanEndTurn ? "可操作" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
