@@ -138,11 +138,18 @@ internal static class GameReader
                     var ui = NEventRoom.Instance;
                     var options = ui == null
                         ? []
-                        : FindAll<NEventOptionButton>(ui).Select((button, index) => new RoomOptionView(
-                            index.ToString(),
-                            Text(button.Option.Title),
-                            Text(button.Option.Description) + (button.Option.IsProceed ? "（离开）" : ""),
-                            button.Option.IsLocked)).ToArray();
+                        : FindAll<NEventOptionButton>(ui).Select((button, index) =>
+                        {
+                            var option = button.Option;
+                            // Ancient-event relics are options carrying a relic model: show the relic itself.
+                            var relic = option.Relic;
+                            return new RoomOptionView(
+                                index.ToString(),
+                                relic != null ? Text(relic.Title) : Text(option.Title),
+                                (relic != null ? Text(relic.DynamicDescription) : Text(option.Description)) +
+                                (option.IsProceed ? "（离开）" : ""),
+                                option.IsLocked);
+                        }).ToArray();
                     return new RoomView("Event", title, body, options) { Id = ScreenId(eventRoom) };
                 }
                 catch (Exception error)
