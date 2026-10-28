@@ -59,6 +59,8 @@ internal sealed class CompanionPanel
     private Button voiceToggle = null!;
     private Label voiceStatus = null!;
     private readonly VoiceClient voice = new();
+    private readonly RunPlan plan = new();
+    private Label planLabel = null!;
     private string pinnedName = "";
     private string lastDirective = "";
     private double pinnedAt;
@@ -186,8 +188,12 @@ internal sealed class CompanionPanel
         debugCard.AddChild(export);
 
         chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
+        chat.PlanProvider = () => plan.Describe();
         chat.Interrupted += () => SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
         chat.UserSaid += NoteDirective;
+        planLabel = new Label { Text = "本局计划：未设置", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        planLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
+        controlCard.AddChild(planLabel);
 
         layer.AddChild(panel);
         toggle = new Button
@@ -835,21 +841,21 @@ internal sealed class CompanionPanel
         }
         if (TryApplyPin(next, room, optionKey)) return;
         autoPending = optionKey;
-        GD.Print($"[SpireCompanion] auto_request kind={room.Kind} options={room.Options.Length} room={room.Id}");
+        GD.Print($"[SpireCompanion] auto_request kind={room.Kind} options={room.Options.Length} room={room.Id} plan={plan.Describe()}");
         autoCts = new CancellationTokenSource();
         autoCts.CancelAfter(TimeSpan.FromSeconds(30));
         if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
-        _ = DecideAsync(next, room.Options, room.Required, lastDirective, autoCts.Token);
+        _ = DecideAsync(next, room.Options, room.Required, lastDirective, plan.Describe(), autoCts.Token);
     }
 
-    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, CancellationToken token)
+    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, string runPlan, CancellationToken token)
     {
         var ids = options.Select(option => option.Id).ToArray();
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
             {
-                var reply = await chat.DecideAsync(snapshot, options, required, directive, token).ConfigureAwait(false);
+                var reply = await chat.DecideAsync(snapshot, options, required, directive, token, runPlan).ConfigureAwait(false);
                 var (id, ranked, reason) = ChoiceParser.ParseWithIds(reply, ids);
                 if (id != null)
                 {
@@ -858,7 +864,7 @@ internal sealed class CompanionPanel
                     {
                         var remaining = options.Where(option => !ranked.Contains(option.Id)).ToArray();
                         if (remaining.Length > 0)
-                            ranked = await CompleteMultiPick(snapshot, remaining, required - ranked.Length, ranked, token).ConfigureAwait(false);
+                            ranked = await CompleteMultiPick(snapshot, remaining, required - ranked.Length, ranked, token, runPlan).ConfigureAwait(false);
                     }
                     mainQueue.Enqueue(() => ApplyAuto(snapshot, ranked, reason));
                     return;
@@ -887,11 +893,11 @@ internal sealed class CompanionPanel
     }
 
     private async Task<string[]> CompleteMultiPick(GameSnapshot snapshot, RoomOptionView[] remaining, int need,
-        string[] chosen, CancellationToken token)
+        string[] chosen, CancellationToken token, string runPlan)
     {
         try
         {
-            var reply = await chat.DecideAsync(snapshot, remaining, need, "", token).ConfigureAwait(false);
+            var reply = await chat.DecideAsync(snapshot, remaining, need, "", token, runPlan).ConfigureAwait(false);
             var (next, ranked, _) = ChoiceParser.ParseWithIds(reply, remaining.Select(option => option.Id).ToArray());
             if (next == null) return chosen;
             var merged = chosen.ToList();
@@ -1170,6 +1176,13 @@ internal sealed class CompanionPanel
     private void NoteDirective(string text)
     {
         lastDirective = text.Length > 80 ? text[..80] : text;
+        if (plan.UpdateFrom(text))
+        {
+            var described = plan.Describe();
+            if (planLabel != null) planLabel.Text = "本局计划：" + (described.Length == 0 ? "未设置" : described);
+            chat.Notify("已更新本局计划：" + described);
+            GD.Print($"[SpireCompanion] plan_update {described}");
+        }
         var target = UserDirective.PinTarget(text);
         if (target.Length == 0) return;
         pinnedName = target;

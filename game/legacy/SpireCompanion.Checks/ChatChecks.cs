@@ -214,6 +214,30 @@ internal static class ChatChecks
             Require(system.Contains("不超过 30 个字"));
             return;
         });
+        await Check("Answers quoting cards outside the snapshot are flagged", () =>
+        {
+            var snapshot = new GameSnapshot("RewardRoom", "铁甲战士", 60, 80, 100, [], "无", false, "")
+            {
+                Deck = [new CardView(0, "STRIKE", "打击", "1", false, "造成6点伤害。")],
+                Room = new RoomView("Reward", "奖励", "", [new RoomOptionView("0", "重锤", "费用 3", false)])
+            };
+            var good = AnswerGrounding.Check("选「重锤」更好。", snapshot);
+            Require(good.Unknown.Length == 0 && good.Known.Contains("重锤"));
+            var bad = AnswerGrounding.Check("选「余烬」还是「重锤」？", snapshot);
+            Require(bad.Unknown.Contains("余烬") && bad.Unknown.Length == 1);
+            return Task.CompletedTask;
+        });
+
+        await Check("Run plan extracts a goal, rules and needs", () =>
+        {
+            var plan = new RunPlan();
+            Require(plan.UpdateFrom("这局走力量流，优先删打击，缺过牌"));
+            Require(plan.Goal == "力量流");
+            Require(plan.Rules.Count == 1 && plan.Rules[0].Contains("删打击"));
+            Require(plan.Needs.Contains("过牌"));
+            Require(plan.Describe().Contains("力量流"));
+            return Task.CompletedTask;
+        });
         await Check("Explicit pick instructions become a pin, negatives do not", () =>
         {
             Require(UserDirective.PinTarget("你一定要听我的，选重锤") == "重锤");

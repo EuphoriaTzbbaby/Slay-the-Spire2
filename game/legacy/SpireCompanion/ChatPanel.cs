@@ -284,14 +284,18 @@ internal sealed class ChatPanel : IDisposable
     {
         try
         {
-            var reply = await conversation.AskAsync(config, apiKey, text, snapshot).ConfigureAwait(false);
+            var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "").ConfigureAwait(false);
             onMain(() =>
             {
                 if (disposed || number != requestNumber) return;
                 bool changed;
                 try { changed = GameReader.Read().Fingerprint != reply.Fingerprint; }
                 catch { changed = true; }
-                Append("搭子", reply.Text);
+                var grounding = AnswerGrounding.Check(reply.Text, snapshot);
+                var body = reply.Text;
+                if (grounding.Unknown.Length > 0)
+                    body += $"\n\n（提示：以下名称不在当前界面：{string.Join("、", grounding.Unknown)}；可能是模型记忆，请以屏幕为准。）";
+                Append("搭子", body);
                 info.Text = changed ? "局面已变化：这条建议基于提问时的状态，可重新分析。" : "建议已返回，由你决定是否采用。";
             });
         }
@@ -308,8 +312,12 @@ internal sealed class ChatPanel : IDisposable
     /// <summary>Current reply style, used for local lines such as the defeat note.</summary>
     public string TalkMode => settings.TalkMode;
 
-    public Task<string> DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, CancellationToken token) =>
-        client.DecideAsync(settings, key.Text, snapshot, options, required, directive, token);
+    public Task<string> DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive,
+        CancellationToken token, string plan = "") =>
+        client.DecideAsync(settings, key.Text, snapshot, options, required, directive, token, plan);
+
+    /// <summary>Shared run plan supplied by the panel, so chat and decisions see the same goal.</summary>
+    public Func<string>? PlanProvider { get; set; }
 
     /// <summary>Auto-mode note in the conversation; not added to model history.</summary>
     public void Notify(string text) => Append("自动", text);
