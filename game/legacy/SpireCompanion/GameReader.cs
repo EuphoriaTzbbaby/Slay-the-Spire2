@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Localization;
@@ -27,6 +28,7 @@ using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.MonsterMoves.Intents;
 using MegaCrit.Sts2.Core.Nodes.TreasureRooms;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Rooms;
@@ -81,8 +83,11 @@ internal static class GameReader
             Potions = player.PotionSlots.Select((p, i) => p == null ? null : new ItemView(i, p.Id.Entry, Text(p.Title), Shorten(Plain(Text(p.DynamicDescription)), 80)))
                 .OfType<ItemView>().ToArray(),
             Room = ReadRoom(run),
+            Floor = run.TotalFloor,
+            Ascension = run.AscensionLevel,
             Enemies = state?.Enemies.Select((e, i) => new EnemyView(i, e.Monster?.Id.Entry ?? "unknown",
-                e.Monster != null ? Text(e.Monster.Title) : "未知敌人", e.CurrentHp, e.MaxHp, e.Block)).ToArray() ?? []
+                e.Monster != null ? Text(e.Monster.Title) : "未知敌人", e.CurrentHp, e.MaxHp, e.Block,
+                IntentOf(e))).ToArray() ?? []
         };
     }
 
@@ -479,6 +484,26 @@ internal static class GameReader
         screen.OnMapPointSelectedLocally(travelable[index]);
     }
 
+    private static string IntentOf(Creature creature)
+    {
+        try
+        {
+            if (creature.Monster?.NextMove is not { } move) return "";
+            var targets = creature.CombatState?.PlayerCreatures;
+            var labels = new List<string>();
+            foreach (var intent in move.Intents)
+            {
+                try
+                {
+                    if (targets != null) labels.Add(StripTags(intent.GetIntentLabel(targets, creature).GetFormattedText()));
+                }
+                catch { }
+            }
+            return string.Join(" / ", labels);
+        }
+        catch { return ""; }
+    }
+
     /// <summary>Read-only card lookup for the chat tool. Never mutates game state.</summary>
     public static string? LookupCardText(string name)
     {
@@ -543,8 +568,8 @@ internal static class GameReader
             "deck" => $"牌组 {snapshot.Deck.Length} 张：" + string.Join("、", snapshot.Deck.Select(card => card.Name)),
             "relics" => "遗物：" + (snapshot.Relics.Length == 0 ? "无" : string.Join(" | ", snapshot.Relics.Select(relic => $"{relic.Name}：{Shorten(relic.Text, 80)}"))),
             "potions" => "药水：" + (snapshot.Potions.Length == 0 ? "无" : string.Join(" | ", snapshot.Potions.Select(potion => $"{potion.Name}：{Shorten(potion.Text, 80)}"))),
-            "enemies" => "敌人：" + (snapshot.Enemies.Length == 0 ? "无" : string.Join("、", snapshot.Enemies.Select(enemy => $"{enemy.Name} {enemy.Hp}/{enemy.MaxHp} 格挡{enemy.Block}"))),
-            "run" => $"场景 {snapshot.Scene}；{snapshot.Character} HP {snapshot.Hp}/{snapshot.MaxHp}；金币 {snapshot.Gold}；能量 {snapshot.Energy?.ToString() ?? "—"}；格挡 {snapshot.Block}；战斗阶段 {snapshot.CombatTurn}",
+            "enemies" => "敌人：" + (snapshot.Enemies.Length == 0 ? "无" : string.Join("、", snapshot.Enemies.Select(enemy => $"{enemy.Name} {enemy.Hp}/{enemy.MaxHp} 格挡{enemy.Block}" + (enemy.Intent.Length > 0 ? $" 意图[{enemy.Intent}]" : "")))),
+            "run" => $"场景 {snapshot.Scene}；{snapshot.Character} A{snapshot.Ascension} 第 {snapshot.Floor} 层 HP {snapshot.Hp}/{snapshot.MaxHp}；金币 {snapshot.Gold}；能量 {snapshot.Energy?.ToString() ?? "—"}；格挡 {snapshot.Block}；战斗阶段 {snapshot.CombatTurn}",
             "map" or "screen" => SnapshotBrief.Describe(snapshot),
             _ => SnapshotBrief.Describe(snapshot)
         };

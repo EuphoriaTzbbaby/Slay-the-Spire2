@@ -8,6 +8,9 @@ public sealed partial class RunPlan
     public string Goal { get; private set; } = "";
     public List<string> Needs { get; } = [];
     public List<string> Rules { get; } = [];
+    public string LastReview { get; private set; } = "";
+    public int Floor { get; set; }
+    public string RunKey { get; set; } = "";
 
     public string Describe()
     {
@@ -15,6 +18,7 @@ public sealed partial class RunPlan
         if (Goal.Length > 0) parts.Add($"目标：{Goal}");
         if (Needs.Count > 0) parts.Add($"需求：{string.Join("、", Needs)}");
         if (Rules.Count > 0) parts.Add($"规则：{string.Join("；", Rules)}");
+        if (LastReview.Length > 0) parts.Add($"上一条复盘：{LastReview}");
         return string.Join("；", parts);
     }
 
@@ -23,6 +27,21 @@ public sealed partial class RunPlan
         Goal = "";
         Needs.Clear();
         Rules.Clear();
+        LastReview = "";
+    }
+
+    public void Restore(string goal, IEnumerable<string> needs, IEnumerable<string> rules, string review)
+    {
+        Goal = goal ?? "";
+        Needs.Clear(); Needs.AddRange(needs.Where(value => !string.IsNullOrWhiteSpace(value)));
+        Rules.Clear(); Rules.AddRange(rules.Where(value => !string.IsNullOrWhiteSpace(value)));
+        LastReview = review ?? "";
+    }
+
+    public void SetReview(string text)
+    {
+        text = text.Replace("\n", " ").Trim();
+        LastReview = text.Length <= 200 ? text : text[..200];
     }
 
     public bool UpdateFrom(string text)
