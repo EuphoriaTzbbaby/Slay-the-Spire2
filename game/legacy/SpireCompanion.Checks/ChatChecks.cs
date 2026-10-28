@@ -195,6 +195,25 @@ internal static class ChatChecks
             Require(merged[2].Name == "祭品");
             return Task.CompletedTask;
         });
+        await Check("Proactive comment stays short and disables thinking", async () =>
+        {
+            string? body = null;
+            using var client = new ChatClient(new Handler(async (request, token) =>
+            {
+                body = await request.Content!.ReadAsStringAsync(token);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"choices\":[{\"message\":{\"content\":\"这层有点阴森，小心点。\"}}]}")
+                };
+            }));
+            var reply = await client.CommentAsync(settings, "k", snapshot, "战斗刚开始", default);
+            Require(reply.Contains("阴森"));
+            Require(body != null && body.Contains("\"thinking\""));
+            using var request = System.Text.Json.JsonDocument.Parse(body!);
+            var system = request.RootElement.GetProperty("messages")[0].GetProperty("content").GetString() ?? "";
+            Require(system.Contains("不超过 30 个字"));
+            return;
+        });
         await Check("Ranked ids keep the primary first and drop unknown ids", () =>
         {
             var (id, ids, reason) = ChoiceParser.ParseWithIds(
