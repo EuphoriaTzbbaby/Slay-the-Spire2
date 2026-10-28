@@ -175,8 +175,9 @@ internal static class GameReader
     public static void SelectRestOption(string optionId)
     {
         var room = NRestSiteRoom.Instance ?? throw new InvalidOperationException("休息点界面已关闭。");
-        var button = FindAll<NRestSiteButton>(room).FirstOrDefault(candidate => candidate.Option.OptionId == optionId)
-            ?? throw new InvalidOperationException("该选项已不在休息点界面中。");
+        var buttons = FindAll<NRestSiteButton>(room).ToList();
+        var button = buttons.FirstOrDefault(candidate => string.Equals(candidate.Option.OptionId, optionId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException($"该选项已不在界面中（界面有 {buttons.Count} 个选项）。");
         if (!button.Option.IsEnabled) throw new InvalidOperationException("该选项当前不可用。");
         button.ForceClick();
     }
