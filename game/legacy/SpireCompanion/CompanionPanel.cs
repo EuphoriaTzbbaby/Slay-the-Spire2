@@ -27,6 +27,7 @@ internal sealed class CompanionPanel
     private string autoDone = "";
     private double autoWait;
     private string autoArmedKind = "";
+    private bool autoSelectPendingConfirm;
     private PanelContainer decisionCard = null!;
     private VBoxContainer decisionButtons = null!;
     private Label decisionStatus = null!;
@@ -109,7 +110,7 @@ internal sealed class CompanionPanel
         autoToggle.Pressed += ToggleAuto;
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
         controlCard.AddChild(autoToggle);
-        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励/休息点/商店里选一项并执行，每个界面只操作一次；战斗执行仍归求解器。"));
+        controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励/休息点/商店/选牌界面里选一项并执行，每个界面只操作一次（选牌会自动确认）；战斗仍归求解器。"));
         solverStart = new Button { Text = "交给 CombatSolver 打本场战斗" };
         solverStart.Pressed += StartSolver;
         UiStyle.Primary(solverStart); UiStyle.Size(solverStart, 44);
@@ -220,13 +221,15 @@ internal sealed class CompanionPanel
     private void UpdateDecision(GameSnapshot next)
     {
         var room = next.Room;
-        if (room is null || room.Options.Length == 0 || room.Kind is not ("Reward" or "Rest" or "Shop"))
+        if (room is null || room.Options.Length == 0 || room.Kind is not ("Reward" or "Rest" or "Shop" or "Select"))
         {
             decisionCard.Visible = false;
             decisionSignature = "";
             return;
         }
-        var signature = next.Fingerprint + "|" + room.Kind + "|" +
+        // Selection itself may not change the snapshot fingerprint, so include whether confirm is available.
+        var canConfirm = room.Kind == "Select" && GameReader.CanConfirmSelection();
+        var signature = next.Fingerprint + "|" + room.Kind + "|" + canConfirm + "|" +
             string.Join("|", room.Options.Select(option => option.Id + option.Name + option.Locked));
         if (signature != decisionSignature)
         {
@@ -236,6 +239,7 @@ internal sealed class CompanionPanel
             {
                 case "Reward": BuildRewardButtons(room); break;
                 case "Rest": BuildRestButtons(room); break;
+                case "Select": BuildSelectButtons(room); break;
                 default: BuildShopButtons(room); break;
             }
             decisionStatus.Text = $"检测到 {room.Options.Length} 个可选项，点击后立即执行。";
@@ -273,6 +277,25 @@ internal sealed class CompanionPanel
             button.Pressed += () => ExecuteRest(id);
             UiStyle.Secondary(button); UiStyle.Size(button, 42);
             decisionButtons.AddChild(button);
+        }
+    }
+
+    private void BuildSelectButtons(RoomView room)
+    {
+        foreach (var option in room.Options)
+        {
+            if (!int.TryParse(option.Id, out var index)) continue;
+            var button = new Button { Text = $"选「{option.Name}」 · {option.Detail}" };
+            button.Pressed += () => ExecuteGridCard(index);
+            UiStyle.Secondary(button); UiStyle.Size(button, 42);
+            decisionButtons.AddChild(button);
+        }
+        if (GameReader.CanConfirmSelection())
+        {
+            var confirm = new Button { Text = "确认选择" };
+            confirm.Pressed += ExecuteConfirm;
+            UiStyle.Primary(confirm); UiStyle.Size(confirm, 42);
+            decisionButtons.AddChild(confirm);
         }
     }
 
@@ -340,11 +363,22 @@ internal sealed class CompanionPanel
     {
         if (!autoEnabled || SolverBridge.Owned || autoPending.Length > 0 || autoWait > 0) return;
         var room = next.Room;
-        if (room is null) { autoArmedKind = ""; return; }
+        if (room is null) { autoArmedKind = ""; autoSelectPendingConfirm = false; return; }
+        if (room.Kind != "Select") autoSelectPendingConfirm = false;
+        if (autoSelectPendingConfirm)
+        {
+            if (GameReader.CanConfirmSelection())
+            {
+                try { GameReader.ConfirmSelection(); message = "自动操作：已确认选牌。"; autoWait = 1.0; autoArmedKind = "Select"; }
+                catch (Exception error) { message = $"自动确认失败：{error.Message}"; StopAuto(); }
+                autoSelectPendingConfirm = false;
+            }
+            return;
+        }
         if (room.Kind != autoArmedKind) autoArmedKind = "";
         // One action per screen visit: a shop should not drain the purse on its own.
         if (room.Kind == autoArmedKind) return;
-        if (room.Kind is not ("Reward" or "Rest" or "Shop")) return;
+        if (room.Kind is not ("Reward" or "Rest" or "Shop" or "Select")) return;
         if (room.Options.All(option => option.Locked)) return;
         var key = next.Fingerprint + "|" + room.Kind;
         if (key == autoDone) return;
@@ -399,7 +433,38 @@ internal sealed class CompanionPanel
             case "Reward" when int.TryParse(id, out var index): ExecuteReward(index); break;
             case "Rest": ExecuteRest(id); break;
             case "Shop": ExecutePurchase(id); break;
+            case "Select" when int.TryParse(id, out var cardIndex):
+                autoSelectPendingConfirm = true;
+                autoWait = 0.4;
+                ExecuteGridCard(cardIndex);
+                break;
         }
+    }
+
+    private void ExecuteGridCard(int index)
+    {
+        try { GameReader.SelectGridCard(index); message = "已选中该卡牌，需要时再点确认。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=select_grid id={index} ok"); }
+        catch (Exception error)
+        {
+            message = $"选牌失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] select_grid: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecuteConfirm()
+    {
+        try { GameReader.ConfirmSelection(); message = "已确认选牌。"; decisionStatus.Text = message; GD.Print("[SpireCompanion] decision_result action=confirm_select ok"); }
+        catch (Exception error)
+        {
+            message = $"确认失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] confirm_select: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
     }
 
     private void ExecuteReward(int index)
