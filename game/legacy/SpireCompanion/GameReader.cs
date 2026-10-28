@@ -26,6 +26,9 @@ using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.TreasureRooms;
+using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
+using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Rewards;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
@@ -179,6 +182,25 @@ internal static class GameReader
                     Godot.GD.PushWarning($"[SpireCompanion] event_state: {error.Message}");
                     return new RoomView("Event", "事件（内容暂不可读）", "", []) { Id = ScreenId(eventRoom) };
                 }
+            case TreasureRoom:
+            {
+                var root = ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root;
+                var ui = FindFirst<NTreasureRoom>(root);
+                if (ui == null) return new RoomView("Treasure", "宝箱房", "等待界面加载", []) { Id = ScreenId(run) };
+                var options = new List<RoomOptionView>();
+                var collection = ui.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
+                if (collection?.Visible != true)
+                    options.Add(new RoomOptionView("open", "打开宝箱", "打开后可以拿取遗物", false));
+                else
+                {
+                    var holders = FindAll<NTreasureRoomRelicHolder>(collection).Where(holder => holder.IsEnabled && holder.Visible).ToList();
+                    options.AddRange(holders.Select((holder, index) => new RoomOptionView(index.ToString(),
+                        Text(holder.Relic?.Model?.Title), Text(holder.Relic?.Model?.DynamicDescription), false)));
+                    if (ui.ProceedButton?.IsEnabled == true)
+                        options.Add(new RoomOptionView("proceed", "离开宝箱房（继续）", "不拿剩余遗物", false));
+                }
+                return new RoomView("Treasure", "宝箱房", "先打开，再挑一个遗物", options.ToArray()) { Id = ScreenId(ui) };
+            }
             case MerchantRoom shop:
                 var inventory = shop.GetLocalInventory();
                 return new RoomView("Shop", "商店", "金币有限，先买最缺的",
@@ -333,14 +355,21 @@ internal static class GameReader
         var buttons = FindAll<NRewardButton>(screen).Where(button => button.Reward != null && button.IsEnabled).ToList();
         if (index < 0 || index >= buttons.Count) throw new InvalidOperationException("该奖励已被领取。");
         var reward = buttons[index].Reward!;
+        var button = buttons[index];
         if (reward is PotionReward)
         {
-            var run = RunManager.Instance.DebugOnlyGetState();
-            var player = run != null ? LocalContext.GetMe(run) : null;
+            var runState = RunManager.Instance.DebugOnlyGetState();
+            var player = runState != null ? LocalContext.GetMe(runState) : null;
             if (player != null && player.PotionSlots.All(slot => slot != null))
-                throw new InvalidOperationException("药水栏已满，先丢弃一瓶再领取。");
+            {
+                // Default policy: drop the rightmost potion, then claim the reward.
+                var slot = Enumerable.Range(0, player.PotionSlots.Count).Last(i => player.PotionSlots[i] != null);
+                var potion = player.PotionSlots[slot] ?? throw new InvalidOperationException("药水栏读取失败。");
+                _ = DiscardThenClaim(potion, button);
+                return;
+            }
         }
-        buttons[index].ForceClick();
+        button.ForceClick();
     }
 
     private static async Task DiscardThenClaim(PotionModel potion, NRewardButton button)
@@ -355,6 +384,24 @@ internal static class GameReader
         {
             if (Godot.GodotObject.IsInstanceValid(button)) button.ForceClick();
         }).CallDeferred();
+    }
+
+    public static void OpenTreasure()
+    {
+        var root = ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root;
+        var button = FindFirst<NTreasureButton>(root) ?? throw new InvalidOperationException("宝箱按钮不可用。");
+        button.ForceClick();
+    }
+
+    public static void ClaimTreasureRelic(int index)
+    {
+        var root = ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root;
+        var ui = FindFirst<NTreasureRoom>(root) ?? throw new InvalidOperationException("宝箱房已关闭。");
+        var collection = ui.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection")
+            ?? throw new InvalidOperationException("宝箱还没有打开。");
+        var holders = FindAll<NTreasureRoomRelicHolder>(collection).Where(holder => holder.IsEnabled && holder.Visible).ToList();
+        if (index < 0 || index >= holders.Count) throw new InvalidOperationException("该遗物已不可拿取。");
+        holders[index].ForceClick();
     }
 
     public static void SelectRelic(int index)
@@ -418,6 +465,12 @@ internal static class GameReader
         if (NMerchantRoom.Instance?.ProceedButton is { IsEnabled: true } shop)
         {
             shop.ForceClick();
+            return;
+        }
+        var root = ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root;
+        if (FindFirst<NTreasureRoom>(root) is { ProceedButton.IsEnabled: true } treasure)
+        {
+            treasure.ProceedButton.ForceClick();
             return;
         }
         throw new InvalidOperationException("当前界面没有可用的继续按钮。");

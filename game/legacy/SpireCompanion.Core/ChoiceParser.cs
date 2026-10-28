@@ -14,7 +14,17 @@ public static class ChoiceParser
     /// <summary>Same validation as Parse, plus the short reason the model was asked to include.</summary>
     public static (string? Id, string Reason) ParseWithReason(string reply, IReadOnlyCollection<string> allowed)
     {
-        if (string.IsNullOrWhiteSpace(reply) || allowed.Count == 0) return (null, "");
+        var (id, _, reason) = ParseWithIds(reply, allowed);
+        return (id, reason);
+    }
+
+    /// <summary>
+    /// Accepts an optional ranked "ids" array for screens that want several cards; every id is
+    /// validated, and the primary choice is always first.
+    /// </summary>
+    public static (string? Id, string[] Ids, string Reason) ParseWithIds(string reply, IReadOnlyCollection<string> allowed)
+    {
+        if (string.IsNullOrWhiteSpace(reply) || allowed.Count == 0) return (null, [], "");
         var text = reply.Trim();
         if (text.StartsWith("```", StringComparison.Ordinal))
         {
@@ -44,14 +54,31 @@ public static class ChoiceParser
                             _ => null
                         };
                         if (id != null && allowed.Contains(id, StringComparer.Ordinal))
-                            return (id, Reason(json.RootElement));
+                        {
+                            var ranked = new List<string> { id };
+                            if (json.RootElement.TryGetProperty("ids", out var list) && list.ValueKind == JsonValueKind.Array)
+                            {
+                                foreach (var item in list.EnumerateArray())
+                                {
+                                    var extra = item.ValueKind switch
+                                    {
+                                        JsonValueKind.String => item.GetString(),
+                                        JsonValueKind.Number => item.GetRawText(),
+                                        _ => null
+                                    };
+                                    if (extra != null && allowed.Contains(extra, StringComparer.Ordinal) && !ranked.Contains(extra))
+                                        ranked.Add(extra);
+                                }
+                            }
+                            return (id, ranked.ToArray(), Reason(json.RootElement));
+                        }
                     }
                 }
             }
             catch (JsonException) { /* fall through to the plain-text check */ }
         }
         // Accept a bare id only; arbitrary prose must not be treated as a choice.
-        return allowed.Contains(text, StringComparer.Ordinal) ? (text, "") : (null, "");
+        return allowed.Contains(text, StringComparer.Ordinal) ? (text, [text], "") : (null, [], "");
     }
 
     private static string Reason(JsonElement root)
