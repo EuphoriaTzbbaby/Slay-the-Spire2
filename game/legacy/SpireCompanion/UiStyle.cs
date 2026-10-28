@@ -198,9 +198,12 @@ internal static class UiStyle
     }
 
     /// <summary>Adds a rounded white card and returns the container to fill.</summary>
-    public static VBoxContainer Card(VBoxContainer parent, string title)
+    public static VBoxContainer Card(VBoxContainer parent, string title) => Card(parent, title, out _);
+
+    public static VBoxContainer Card(VBoxContainer parent, string title, out PanelContainer container)
     {
         var card = new PanelContainer();
+        container = card;
         var cardStyle = Box(CardColor, new Color("EFD3A0"), 16, 12);
         cardStyle.ShadowColor = new Color(0.55f, 0.36f, 0.10f, 0.10f);
         cardStyle.ShadowSize = 4;

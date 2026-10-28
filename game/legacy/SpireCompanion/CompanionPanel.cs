@@ -20,6 +20,9 @@ internal sealed class CompanionPanel
     private bool dragging;
     private Vector2 dragOffset;
     private Button pause = null!;
+    private PanelContainer decisionCard = null!;
+    private VBoxContainer decisionButtons = null!;
+    private string decisionSignature = "";
     private Button toggle = null!;
     private Button solverStart = null!;
     private bool reportedReady;
@@ -92,6 +95,13 @@ internal sealed class CompanionPanel
         UiStyle.Secondary(pause); UiStyle.Size(pause, 44);
         controlCard.AddChild(pause);
         controlCard.AddChild(UiStyle.Hint("本模块只给文字建议；战斗执行由求解器负责，不经过模型判断。"));
+
+        var decisionBody = UiStyle.Card(body, "可以执行", out decisionCard);
+        decisionCard.Visible = false;
+        decisionBody.AddChild(UiStyle.Hint("只执行你点下的选择，不会自动选。"));
+        decisionButtons = new VBoxContainer();
+        decisionButtons.AddThemeConstantOverride("separation", 6);
+        decisionBody.AddChild(decisionButtons);
 
         var debugCard = UiStyle.Card(body, "调试");
         var export = new Button { Text = "导出当前状态" };
@@ -187,6 +197,63 @@ internal sealed class CompanionPanel
         Refresh();
     }
 
+    /// <summary>Offer executable choices only for screens we can actually act on.</summary>
+    private void UpdateDecision(GameSnapshot next)
+    {
+        if (next.Room is not { Kind: "Reward" } room || room.Options.Length == 0)
+        {
+            decisionCard.Visible = false;
+            decisionSignature = "";
+            return;
+        }
+        var signature = next.Fingerprint + "|" + string.Join("|", room.Options.Select(option => option.Name));
+        if (signature != decisionSignature)
+        {
+            decisionSignature = signature;
+            foreach (var child in decisionButtons.GetChildren()) child.Free();
+            foreach (var option in room.Options)
+            {
+                if (!int.TryParse(option.Id, out var index)) continue;
+                var button = new Button { Text = $"选「{option.Name}」 · {option.Detail}" };
+                button.Pressed += () => ExecuteReward(index);
+                UiStyle.Secondary(button); UiStyle.Size(button, 42);
+                decisionButtons.AddChild(button);
+            }
+            if (GameReader.CanSkipReward())
+            {
+                var skip = new Button { Text = "跳过这张奖励" };
+                skip.Pressed += ExecuteSkipReward;
+                UiStyle.Ghost(skip); UiStyle.Size(skip, 40);
+                decisionButtons.AddChild(skip);
+            }
+        }
+        decisionCard.Visible = true;
+    }
+
+    private void ExecuteReward(int index)
+    {
+        try { GameReader.SelectReward(index); message = "已选择奖励卡牌。"; }
+        catch (Exception error)
+        {
+            message = $"选择失败：{error.Message}";
+            GD.PushError($"[SpireCompanion] select_reward: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecuteSkipReward()
+    {
+        try { GameReader.SkipReward(); message = "已跳过这张奖励。"; }
+        catch (Exception error)
+        {
+            message = $"跳过失败：{error.Message}";
+            GD.PushError($"[SpireCompanion] skip_reward: {error}");
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
     private void PauseAll()
     {
         chat.Cancel();
@@ -232,6 +299,7 @@ internal sealed class CompanionPanel
             SolverBridge.ObserveLifecycle();
             var next = GameReader.Read();
             var solver = SolverBridge.Status();
+            UpdateDecision(next);
             stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "只读建议";
             stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : UiStyle.Good);
             status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n阶段：{(next.CanEndTurn ? "可操作" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
