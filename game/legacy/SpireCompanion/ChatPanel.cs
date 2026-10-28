@@ -343,12 +343,24 @@ internal sealed class ChatPanel : IDisposable
         { onMain(() => { if (!disposed) { if (cancelRequested) info.Text = "本次回复已取消。"; HideTyping(); SetBusy(false); } }); }
     }
     /// <summary>One-shot structured choice for auto mode; never touches the visible conversation.</summary>
+    /// <summary>Last question and answer, used as planner context for auto decisions.</summary>
+    public string RecentExchange
+    {
+        get
+        {
+            var last = conversation.Last;
+            if (last == null) return "";
+            var text = $"{last.Value.Question} → {last.Value.Answer}";
+            return text.Length <= 300 ? text : text[..300];
+        }
+    }
+
     /// <summary>Current reply style, used for local lines such as the defeat note.</summary>
     public string TalkMode => settings.TalkMode;
 
     public Task<string> DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive,
-        CancellationToken token, string plan = "") =>
-        client.DecideAsync(settings, key.Text, snapshot, options, required, directive, token, plan);
+        CancellationToken token, string plan = "", string playerContext = "") =>
+        client.DecideAsync(settings, key.Text, snapshot, options, required, directive, token, plan, playerContext);
 
     /// <summary>Shared run plan supplied by the panel, so chat and decisions see the same goal.</summary>
     public Func<string>? PlanProvider { get; set; }

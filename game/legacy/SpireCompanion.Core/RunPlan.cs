@@ -9,6 +9,9 @@ public sealed partial class RunPlan
     public List<string> Needs { get; } = [];
     public List<string> Rules { get; } = [];
     public string LastReview { get; private set; } = "";
+    public string Posture { get; private set; } = "";
+    public string Instructions { get; private set; } = "";
+    public List<string> Preferences { get; } = [];
     public int Floor { get; set; }
     public string RunKey { get; set; } = "";
 
@@ -18,6 +21,9 @@ public sealed partial class RunPlan
         if (Goal.Length > 0) parts.Add($"目标：{Goal}");
         if (Needs.Count > 0) parts.Add($"需求：{string.Join("、", Needs)}");
         if (Rules.Count > 0) parts.Add($"规则：{string.Join("；", Rules)}");
+        if (Posture.Length > 0) parts.Add($"姿态：{Posture}");
+        if (Preferences.Count > 0) parts.Add($"玩家偏好：{string.Join("、", Preferences)}");
+        if (Instructions.Length > 0) parts.Add($"指示：{Instructions}");
         if (LastReview.Length > 0) parts.Add($"上一条复盘：{LastReview}");
         return string.Join("；", parts);
     }
@@ -28,6 +34,28 @@ public sealed partial class RunPlan
         Needs.Clear();
         Rules.Clear();
         LastReview = "";
+        Posture = "";
+        Instructions = "";
+        Preferences.Clear();
+    }
+
+    public bool AddPreference(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name) || Preferences.Contains(name)) return false;
+        Preferences.Add(name);
+        return true;
+    }
+
+    public void SetPosture(string posture)
+    {
+        if (posture.Length > 0) Posture = posture;
+    }
+
+    public void SetInstructions(string instructions)
+    {
+        instructions = instructions.Trim();
+        if (instructions.Length == 0) return;
+        Instructions = instructions.Length <= 120 ? instructions : instructions[..120];
     }
 
     public void Restore(string goal, IEnumerable<string> needs, IEnumerable<string> rules, string review)
@@ -55,6 +83,11 @@ public sealed partial class RunPlan
             var value = rule.Value.Trim('，', '。', '！', '？', ' ');
             if (value.Length > 0 && !Rules.Contains(value)) Rules.Add(value);
         }
+        if (text.Contains("激进") || text.Contains("进攻") || text.Contains("贪")) Posture = "激进";
+        else if (text.Contains("保守") || text.Contains("稳") || text.Contains("防守") || text.Contains("苟")) Posture = "防守";
+        else if (text.Contains("平衡")) Posture = "平衡";
+        if (text.Contains("这局") || text.Contains("本局") || text.Contains("记住") || text.Contains("以后"))
+            SetInstructions(text);
         var need = NeedPattern().Match(text);
         if (need.Success)
         {
