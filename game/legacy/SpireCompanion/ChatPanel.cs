@@ -320,7 +320,9 @@ internal sealed class ChatPanel : IDisposable
                 catch { changed = true; }
                 var grounding = AnswerGrounding.Check(reply.Text, snapshot);
                 var body = reply.Text;
-                if (grounding.Unknown.Length > 0)
+                if (body.StartsWith("（这条回答被拦截", StringComparison.Ordinal))
+                    GD.Print("[SpireCompanion] answer_blocked");
+                else if (grounding.Unknown.Length > 0)
                     body += $"\n\n（提示：以下名称不在当前界面：{string.Join("、", grounding.Unknown)}；可能是模型记忆，请以屏幕为准。）";
                 Append("搭子", body);
                 info.Text = changed ? "局面已变化：这条建议基于提问时的状态，可重新分析。" : "建议已返回，由你决定是否采用。";

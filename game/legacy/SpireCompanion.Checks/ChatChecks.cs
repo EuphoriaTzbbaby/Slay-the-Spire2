@@ -214,6 +214,23 @@ internal static class ChatChecks
             Require(system.Contains("不超过 30 个字"));
             return;
         });
+        await Check("Answers naming cards outside the screen are blocked, not stored", async () =>
+        {
+            using var client = new ChatClient(new Handler((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"choices\":[{\"message\":{\"content\":\"选「余烬」更好。\"}}]}")
+            })));
+            using var conversation = new ChatConversation(client);
+            var snapshot = new GameSnapshot("RewardRoom", "铁甲战士", 60, 80, 100, [], "无", false, "")
+            {
+                Deck = [new CardView(0, "STRIKE", "打击", "1", false, "造成6点伤害。")],
+                Room = new RoomView("Reward", "选择一张牌", "", [new RoomOptionView("0", "重锤", "费用 3", false)])
+            };
+            var reply = await conversation.AskAsync(settings, "k", "选哪个", snapshot);
+            Require(reply.Text.Contains("被拦截"));
+            Require(!reply.Text.Contains("选「余烬」更好"));
+            return;
+        });
         await Check("Chat can call lookup_card and answer from its result", async () =>
         {
             var requests = 0;

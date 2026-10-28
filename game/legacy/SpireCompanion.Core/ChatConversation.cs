@@ -16,6 +16,8 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
             ObjectDisposedException.ThrowIf(disposed, this);
             if (active != null) throw new InvalidOperationException("上一条消息仍在处理或取消中。");
             active = request = new CancellationTokenSource();
+            // A different screen invalidates earlier card/option context; start that request clean.
+            if (screenChanged) history.Clear();
             previous = history.ToArray();
         }
         try
@@ -24,6 +26,13 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
             lock (sync)
             {
                 request.Token.ThrowIfCancellationRequested();
+                var grounding = AnswerGrounding.Check(text, snapshot);
+                if (grounding.Unknown.Length > 0)
+                {
+                    // Do not show or remember an answer that names cards outside this screen.
+                    var blocked = $"（这条回答被拦截：模型提到了当前界面没有的卡牌：{string.Join("、", grounding.Unknown)}。请点「分析当前局面」或再问一次。）";
+                    return new(blocked, snapshot.Fingerprint);
+                }
                 history.Add(new(question, text));
                 while (history.Count > 6 || history.Sum(t => t.Question.Length + t.Answer.Length) > 18_000) history.RemoveAt(0);
             }
