@@ -540,7 +540,7 @@ internal static class GameReader
 
     private static CardView Card(CardModel card, int index, bool inHand) => new(index, card.Id.Entry, Text(card.Title),
         card.EnergyCost.CostsX ? "X" : inHand ? card.EnergyCost.GetAmountToSpend().ToString() : "未在手牌，不计算动态费用",
-        card.IsUpgraded, inHand ? Shorten(CardText(card), 140) : "");
+        card.IsUpgraded, Shorten(CardText(card), inHand ? 140 : 80));
 
     /// <summary>CardModel.Description is a template; the pile-aware call renders the real numbers.</summary>
     private static string CardText(CardModel card)
