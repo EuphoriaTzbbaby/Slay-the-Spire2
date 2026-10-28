@@ -29,3 +29,5 @@ game/legacy/local.props
 
 # Private local encrypted profiles (runtime files belong outside the repository)
 **/*.vault.json
+
+dist/
