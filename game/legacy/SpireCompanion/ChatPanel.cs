@@ -299,6 +299,9 @@ internal sealed class ChatPanel : IDisposable
     /// <summary>Auto-mode note in the conversation; not added to model history.</summary>
     public void Notify(string text) => Append("自动", text);
 
+    /// <summary>Raised when the player starts talking to the companion or cancels a request.</summary>
+    public event Action? Interrupted;
+
     public (ChatSettings Settings, string ApiKey) RequestContext => (settings, key.Text);
 
     public Task<string> CommentAsync(ChatSettings config, string apiKey, GameSnapshot snapshot, string occasion, CancellationToken token) =>
@@ -308,6 +311,7 @@ internal sealed class ChatPanel : IDisposable
 
     public void Cancel()
     {
+        Interrupted?.Invoke();
         if (!busy) return;
         cancelRequested = true;
         requestNumber++; // Suppress a reply already queued for the next game frame as well.
