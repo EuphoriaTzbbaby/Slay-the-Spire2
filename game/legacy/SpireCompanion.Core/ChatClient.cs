@@ -39,7 +39,8 @@ public sealed class ChatClient : IDisposable
     }
 
     public async Task<string> AskAsync(ChatSettings settings, string apiKey, string question, GameSnapshot snapshot,
-        IReadOnlyList<ChatTurn> history, CancellationToken cancellation, string plan = "", bool screenChanged = false)
+        IReadOnlyList<ChatTurn> history, CancellationToken cancellation, string plan = "", bool screenChanged = false,
+        Func<string, string?>? cardLookup = null)
     {
         if (string.IsNullOrWhiteSpace(question) || question.Length > 4000) throw new ArgumentException("请输入 1 到 4000 字的消息。");
         var verbosity = Personality.Instructions(settings.TalkMode);
@@ -52,7 +53,8 @@ public sealed class ChatClient : IDisposable
                 "状态里未包含的字段不代表零或不存在。不要把建议称作全局最优。玩家问到当前未提供的奖励或商店选项时，说明缺少选项信息。" +
                 "如果状态 JSON 里有 Room 字段，那就是当前界面真实的标题、描述与选项，按它回答，并可以逐项比较；不要另编选项。" +
                 "历史对话只用于理解追问，不能作为事实来源；卡牌名称与效果必须逐字来自本轮 snapshot 的 Cards、Deck 或 Room.Options。" +
-                "如果玩家提到的牌不在本轮 snapshot 里，直接说\"当前界面没有这张牌\"，不要用历史里的牌或记忆补全，也不要给卡牌编造费用或金币价格。" +
+                "如果玩家提到的牌不在本轮 snapshot 里，或你不确定某张牌的效果，先调用 lookup_card 查询；查到之前不要凭记忆回答，工具结果才是权威。" +
+                "如果 lookup_card 返回未找到，就直接说没有查到，不要编造。" +
                 (screenChanged ? "注意：相对上一轮，当前界面已经变化；历史对话里的卡牌、选项、价格不适用于当前界面，必须以 current_screen 和本轮 snapshot 为准。" : "") +
                 ScreenGuidance.For(snapshot) }
         };
@@ -71,7 +73,15 @@ public sealed class ChatClient : IDisposable
         });
         if (context.Length > 80_000) throw new ArgumentException("当前状态过大，请先缩小提问范围。");
         messages.Add(new { role = "user", content = context });
-        var reply = await PostAsync(settings, apiKey, messages, cancellation).ConfigureAwait(false);
+        string reply;
+        if (cardLookup == null)
+        {
+            reply = await PostAsync(settings, apiKey, messages, cancellation).ConfigureAwait(false);
+        }
+        else
+        {
+            reply = await AskWithToolsAsync(settings, apiKey, messages, cancellation, cardLookup).ConfigureAwait(false);
+        }
         var grounding = AnswerGrounding.Check(reply, snapshot);
         if (grounding.Unknown.Length == 0) return reply;
         // One corrective retry: the answer named things that are not on this screen.
@@ -103,8 +113,88 @@ public sealed class ChatClient : IDisposable
         return await PostAsync(settings, apiKey, messages, cancellation, 1000, structured: true).ConfigureAwait(false);
     }
 
+    private static readonly object[] ChatTools =
+    [
+        new
+        {
+            type = "function",
+            function = new
+            {
+                name = "lookup_card",
+                description = "查询《杀戮尖塔 2》任意卡牌的官方效果文本（只读）。当前快照没有的卡、或不确定效果时先调用它。",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new { name = new { type = "string", description = "卡牌中文名，例如 重锤" } },
+                    required = new[] { "name" }
+                }
+            }
+        }
+    ];
+
+    private async Task<string> AskWithToolsAsync(ChatSettings settings, string apiKey, List<object> messages,
+        CancellationToken cancellation, Func<string, string?> cardLookup)
+    {
+        for (int round = 0; round < 3; round++)
+        {
+            JsonElement choice;
+            try
+            {
+                choice = await SendAsync(settings, apiKey, messages, cancellation, 1000, false, ChatTools).ConfigureAwait(false);
+            }
+            catch (ModelReplyException error) when (round == 0 && error.Message.Contains("HTTP 400"))
+            {
+                // Provider does not support tools: fall back to the plain push-snapshot request.
+                return await PostAsync(settings, apiKey, messages, cancellation).ConfigureAwait(false);
+            }
+            var message = choice.GetProperty("message");
+            var calls = ParseToolCalls(message);
+            if (calls.Count == 0) return ExtractText(choice, 1000);
+            messages.Add(new { role = "assistant", content = (string?)null, tool_calls = calls.Select(call => call.Raw).ToArray() });
+            foreach (var call in calls)
+            {
+                var result = call.Name == "lookup_card"
+                    ? cardLookup(call.Argument) ?? $"未找到卡牌「{call.Argument}」，请直接说明没有查到。"
+                    : $"未知工具：{call.Name}";
+                messages.Add(new { role = "tool", tool_call_id = call.Id, content = result });
+            }
+        }
+        throw new ModelReplyException("工具调用次数过多，请把问题拆开再问。");
+    }
+
+    private sealed record ToolCall(string Id, string Name, string Argument, JsonElement Raw);
+
+    private static List<ToolCall> ParseToolCalls(JsonElement message)
+    {
+        var calls = new List<ToolCall>();
+        if (!message.TryGetProperty("tool_calls", out var array) || array.ValueKind != JsonValueKind.Array) return calls;
+        foreach (var item in array.EnumerateArray())
+        {
+            if (!item.TryGetProperty("function", out var function)) continue;
+            var name = function.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+            var argsRaw = function.TryGetProperty("arguments", out var a) ? a.GetString() ?? "{}" : "{}";
+            var id = item.TryGetProperty("id", out var i) ? i.GetString() ?? "" : "";
+            var argument = "";
+            try
+            {
+                using var args = JsonDocument.Parse(argsRaw);
+                if (args.RootElement.TryGetProperty("name", out var nameValue)) argument = nameValue.GetString() ?? "";
+            }
+            catch (JsonException) { }
+            calls.Add(new ToolCall(id, name, argument, item.Clone()));
+        }
+        return calls;
+    }
+
     private async Task<string> PostAsync(ChatSettings settings, string apiKey, List<object> messages,
         CancellationToken cancellation, int maxTokens = 1000, bool structured = false)
+    {
+        var choice = await SendAsync(settings, apiKey, messages, cancellation, maxTokens, structured).ConfigureAwait(false);
+        return ExtractText(choice, maxTokens);
+    }
+
+    private async Task<JsonElement> SendAsync(ChatSettings settings, string apiKey, List<object> messages,
+        CancellationToken cancellation, int maxTokens, bool structured, object[]? tools = null)
     {
         var target = settings.RequestUri();
         var payload = new Dictionary<string, object>
@@ -113,6 +203,7 @@ public sealed class ChatClient : IDisposable
         };
         // Reasoning-capable providers otherwise spend the whole output budget thinking and return an empty body.
         if (structured) payload["thinking"] = new { type = "disabled" };
+        if (tools != null) payload["tools"] = tools;
         using var request = new HttpRequestMessage(HttpMethod.Post, target);
         if (!string.IsNullOrWhiteSpace(apiKey)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
@@ -124,7 +215,7 @@ public sealed class ChatClient : IDisposable
             if (structured && (int)response.StatusCode == 400)
             {
                 // A provider that rejects the thinking switch gets one retry with a larger plain budget.
-                return await PostAsync(settings, apiKey, messages, cancellation, maxTokens * 2).ConfigureAwait(false);
+                return await SendAsync(settings, apiKey, messages, cancellation, maxTokens * 2, structured: false, tools).ConfigureAwait(false);
             }
             if (!response.IsSuccessStatusCode)
                 throw new ModelReplyException((int)response.StatusCode switch
@@ -146,32 +237,39 @@ public sealed class ChatClient : IDisposable
             }
             using var json = JsonDocument.Parse(body.ToArray());
             if (!json.RootElement.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0
-                || !choices[0].TryGetProperty("message", out var message))
+                || !choices[0].TryGetProperty("message", out _))
                 throw new ModelReplyException("模型返回的数据缺少 choices 或 message，请检查服务是否兼容 Chat Completions。");
-            var text = MessageText(message);
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                // Reasoning models can spend the whole output budget before writing an answer.
-                var reasoning = message.TryGetProperty("reasoning_content", out var thinking) && thinking.ValueKind == JsonValueKind.String
-                    ? thinking.GetString() : null;
-                var finish = choices[0].TryGetProperty("finish_reason", out var reason) && reason.ValueKind == JsonValueKind.String
-                    ? reason.GetString() : null;
-                if (!string.IsNullOrWhiteSpace(reasoning))
-                    throw new ModelReplyException(finish == "length"
-                        ? $"模型把 {maxTokens} token 预算全花在思考上，没有写正文。请换用非推理模型，或调大最大输出后重试。"
-                        : "模型只返回了推理内容、没有正文。请改用非推理模型（如 deepseek-chat / deepseek-flash）。");
-                if (finish == "length")
-                    throw new ModelReplyException("回复被输出长度上限截断，请缩短问题或换用支持更长输出的模型。");
-                throw new ModelReplyException("模型返回了空正文，请检查服务与模型是否支持 Chat Completions。");
-            }
-            if (text.Length > 12_000) throw new ModelReplyException("模型文字过长，请缩短问题后重试。");
-            return text;
+            return choices[0].Clone();
         }
         catch (OperationCanceledException) when (!cancellation.IsCancellationRequested)
         { throw new ModelReplyException("模型响应超时，可以稍后重试。"); }
         catch (JsonException) { throw new ModelReplyException("模型返回的 JSON 格式无效。"); }
         catch (HttpRequestException) { throw new ModelReplyException("无法连接模型服务，请检查网络和地址。"); }
     }
+
+    private static string ExtractText(JsonElement choice, int maxTokens)
+    {
+        var message = choice.GetProperty("message");
+        var text = MessageText(message);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            // Reasoning models can spend the whole output budget before writing an answer.
+            var reasoning = message.TryGetProperty("reasoning_content", out var thinking) && thinking.ValueKind == JsonValueKind.String
+                ? thinking.GetString() : null;
+            var finish = choice.TryGetProperty("finish_reason", out var reason) && reason.ValueKind == JsonValueKind.String
+                ? reason.GetString() : null;
+            if (!string.IsNullOrWhiteSpace(reasoning))
+                throw new ModelReplyException(finish == "length"
+                    ? $"模型把 {maxTokens} token 预算全花在思考上，没有写正文。请换用非推理模型，或调大最大输出后重试。"
+                    : "模型只返回了推理内容、没有正文。请改用非推理模型（如 deepseek-chat / deepseek-flash）。");
+            if (finish == "length")
+                throw new ModelReplyException("回复被输出长度上限截断，请缩短问题或换用支持更长输出的模型。");
+            throw new ModelReplyException("模型返回了空正文，请检查服务与模型是否支持 Chat Completions。");
+        }
+        if (text.Length > 12_000) throw new ModelReplyException("模型文字过长，请缩短问题后重试。");
+        return text;
+    }
+
     /// <summary>Some compatible providers return content as a string, others as typed parts.</summary>
     private static string? MessageText(JsonElement message)
     {

@@ -214,6 +214,40 @@ internal static class ChatChecks
             Require(system.Contains("不超过 30 个字"));
             return;
         });
+        await Check("Chat can call lookup_card and answer from its result", async () =>
+        {
+            var requests = 0;
+            string? secondBody = null;
+            using var client = new ChatClient(new Handler(async (request, token) =>
+            {
+                requests++;
+                var body = await request.Content!.ReadAsStringAsync(token);
+                if (requests == 1)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent("{\"choices\":[{\"message\":{\"content\":null,\"tool_calls\":[{\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":\"lookup_card\",\"arguments\":\"{\\\"name\\\":\\\"重锤\\\"}\"}}]}}]}")
+                    };
+                }
+                secondBody = body;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"choices\":[{\"message\":{\"content\":\"重锤是 3 费，造成 32 点伤害。\"}}]}")
+                };
+            }));
+            var reply = await client.AskAsync(settings, "k", "重锤什么效果", snapshot, [], default, "",
+                cardLookup: name => name == "重锤" ? "重锤（3 费）：造成32点伤害" : null);
+            Require(reply.Contains("32"));
+            Require(requests == 2);
+            Require(secondBody != null);
+            using var doc = JsonDocument.Parse(secondBody!);
+            string? toolContent = null;
+            foreach (var message in doc.RootElement.GetProperty("messages").EnumerateArray())
+                if (message.TryGetProperty("role", out var role) && role.GetString() == "tool")
+                    toolContent = message.GetProperty("content").GetString();
+            Require(toolContent != null && toolContent.Contains("重锤（3 费）"));
+            return;
+        });
         await Check("Screen brief puts the current options in readable text", () =>
         {
             var snapshot = new GameSnapshot("RewardRoom", "铁甲战士", 60, 80, 100, ["打击"], "无", false, "")

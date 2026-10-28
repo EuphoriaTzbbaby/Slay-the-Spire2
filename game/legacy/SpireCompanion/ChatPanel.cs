@@ -1,4 +1,5 @@
 using Godot;
+using MegaCrit.Sts2.Core.Nodes;
 using SpireCompanion.Core;
 
 namespace SpireCompanion;
@@ -262,6 +263,20 @@ internal sealed class ChatPanel : IDisposable
 
     public bool Busy => busy;
 
+    /// <summary>The tool callback runs on a worker thread; marshal the game read to the main thread.</summary>
+    private string? LookupCardOnMain(string name)
+    {
+        if (NGame.IsMainThread()) return GameReader.LookupCardText(name);
+        string? result = null;
+        using var done = new ManualResetEventSlim();
+        onMain(() =>
+        {
+            try { result = GameReader.LookupCardText(name); }
+            finally { done.Set(); }
+        });
+        return done.Wait(TimeSpan.FromSeconds(3)) ? result : null;
+    }
+
     private void Begin(string text)
     {
         if (disposed || busy || profiles.Busy) return;
@@ -288,7 +303,8 @@ internal sealed class ChatPanel : IDisposable
             var screenKey = snapshot.Scene + "|" + (snapshot.Room?.Id ?? "");
             var screenChanged = lastScreenKey.Length > 0 && screenKey != lastScreenKey;
             lastScreenKey = screenKey;
-            var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "", screenChanged).ConfigureAwait(false);
+            var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "", screenChanged,
+                LookupCardOnMain).ConfigureAwait(false);
             onMain(() =>
             {
                 if (disposed || number != requestNumber) return;
