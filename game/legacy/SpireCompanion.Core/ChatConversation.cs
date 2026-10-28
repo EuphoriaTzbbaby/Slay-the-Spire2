@@ -7,7 +7,7 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
     private readonly List<ChatTurn> history = [];
     private CancellationTokenSource? active;
     private bool disposed;
-    public async Task<ChatReply> AskAsync(ChatSettings settings, string key, string question, GameSnapshot snapshot, string plan = "", bool screenChanged = false, Func<string, string, string?>? toolExecutor = null, Action<string>? toolTrace = null)
+    public async Task<ChatReply> AskAsync(ChatSettings settings, string key, string question, GameSnapshot snapshot, string plan = "", bool screenChanged = false, Func<string, string, string?>? toolExecutor = null, Action<string>? toolTrace = null, string liveState = "")
     {
         CancellationTokenSource request;
         ChatTurn[] previous;
@@ -22,7 +22,7 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
         }
         try
         {
-            var text = await client.AskAsync(settings, key, question, snapshot, previous, request.Token, plan, screenChanged, toolExecutor, toolTrace).ConfigureAwait(false);
+            var text = await client.AskAsync(settings, key, question, snapshot, previous, request.Token, plan, screenChanged, toolExecutor, toolTrace, liveState).ConfigureAwait(false);
             lock (sync)
             {
                 request.Token.ThrowIfCancellationRequested();

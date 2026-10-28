@@ -40,7 +40,7 @@ public sealed class ChatClient : IDisposable
 
     public async Task<string> AskAsync(ChatSettings settings, string apiKey, string question, GameSnapshot snapshot,
         IReadOnlyList<ChatTurn> history, CancellationToken cancellation, string plan = "", bool screenChanged = false,
-        Func<string, string, string?>? toolExecutor = null, Action<string>? toolTrace = null)
+        Func<string, string, string?>? toolExecutor = null, Action<string>? toolTrace = null, string liveState = "")
     {
         if (string.IsNullOrWhiteSpace(question) || question.Length > 4000) throw new ArgumentException("请输入 1 到 4000 字的消息。");
         var verbosity = Personality.Instructions(settings.TalkMode);
@@ -53,7 +53,7 @@ public sealed class ChatClient : IDisposable
                 "状态里未包含的字段不代表零或不存在。不要把建议称作全局最优。玩家问到当前未提供的奖励或商店选项时，说明缺少选项信息。" +
                 "如果状态 JSON 里有 Room 字段，那就是当前界面真实的标题、描述与选项，按它回答，并可以逐项比较；不要另编选项。" +
                 "历史对话只用于理解追问，不能作为事实来源；卡牌名称与效果必须逐字来自本轮 snapshot 的 Cards、Deck 或 Room.Options。" +
-                "回答任何问题前，必须先调用 query_state 获取最新游戏状态，再结合结果回答；不要只凭上下文或记忆。" +
+                "回答任何问题前，必须先调用 query_state 获取最新游戏状态，再结合结果回答；不要只凭上下文或记忆。如果请求里给了 live_state，它是提问瞬间读取的实时状态，必须优先使用。" +
                 "如果需要当前快照之外的信息，再调用工具：lookup_card / lookup_relic / lookup_potion 查图鉴，query_state 查实时局面（scope 可为 screen/hand/deck/relics/potions/enemies/run/map）。" +
                 "查到之前不要凭记忆回答，工具结果才是权威；工具返回未找到就直说没有查到，不要编造。" +
                 (screenChanged ? "注意：相对上一轮，当前界面已经变化；历史对话里的卡牌、选项、价格不适用于当前界面，必须以 current_screen 和本轮 snapshot 为准。" : "") +
@@ -68,6 +68,7 @@ public sealed class ChatClient : IDisposable
         var context = JsonSerializer.Serialize(new
         {
             current_screen = SnapshotBrief.Describe(snapshot),
+            live_state = liveState,
             allowed_names = allowed,
             screen_changed = screenChanged,
             question,
@@ -83,7 +84,7 @@ public sealed class ChatClient : IDisposable
         }
         else
         {
-            reply = await AskWithToolsAsync(settings, apiKey, messages, cancellation, toolExecutor, toolTrace).ConfigureAwait(false);
+            reply = await AskWithToolsAsync(settings, apiKey, messages, cancellation, toolExecutor, toolTrace, snapshot).ConfigureAwait(false);
         }
         var grounding = AnswerGrounding.Check(reply, snapshot);
         if (grounding.Unknown.Length == 0) return reply;
@@ -132,7 +133,7 @@ public sealed class ChatClient : IDisposable
         => new { type = "function", function = new { name, description, parameters = new { type = "object", properties, required = new[] { required } } } };
 
     private async Task<string> AskWithToolsAsync(ChatSettings settings, string apiKey, List<object> messages,
-        CancellationToken cancellation, Func<string, string, string?> toolExecutor, Action<string>? toolTrace)
+        CancellationToken cancellation, Func<string, string, string?> toolExecutor, Action<string>? toolTrace, GameSnapshot snapshot)
     {
         for (int round = 0; round < 3; round++)
         {
@@ -151,7 +152,18 @@ public sealed class ChatClient : IDisposable
             }
             var message = choice.GetProperty("message");
             var calls = ParseToolCalls(message);
-            if (calls.Count == 0) return ExtractText(choice, 1000);
+            if (calls.Count == 0)
+            {
+                if (round == 0)
+                {
+                    // Model ignored the forced tool: read live state ourselves and make it answer with it.
+                    var forced = toolExecutor("query_state", "all") ?? SnapshotBrief.Describe(snapshot);
+                    toolTrace?.Invoke($"forced query_state(all) -> {(forced.Length > 60 ? forced[..60] : forced)}");
+                    messages.Add(new { role = "user", content = "【实时状态（刚读取）】" + forced });
+                    continue;
+                }
+                return ExtractText(choice, 1000);
+            }
             messages.Add(new { role = "assistant", content = (string?)null, tool_calls = calls.Select(call => call.Raw).ToArray() });
             foreach (var call in calls)
             {
