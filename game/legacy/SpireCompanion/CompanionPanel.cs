@@ -1281,10 +1281,37 @@ internal sealed class CompanionPanel
             GD.Print($"[SpireCompanion] plan_update {described}");
         }
         var target = UserDirective.PinTarget(text);
+        var source = "verb";
+        if (target.Length == 0)
+        {
+            // If the player just names an option on this screen ("重锤"), pin it directly.
+            try
+            {
+                var room = GameReader.Read().Room;
+                var desire = text.Contains('选') || text.Contains('拿') || text.Contains('买') || text.Contains('要') ||
+                    text.Contains('想') || text.Contains('就') || text.Contains("一定") || text.Contains("必须") || text.Contains("听我的");
+                if (room != null)
+                {
+                    foreach (var option in room.Options)
+                    {
+                        if (option.Name.Length < 2 || !text.Contains(option.Name, StringComparison.Ordinal)) continue;
+                        if (!desire && text.Trim() != option.Name) continue;
+                        if (text.Contains("别" + option.Name, StringComparison.Ordinal) ||
+                            text.Contains("不要" + option.Name, StringComparison.Ordinal) ||
+                            text.Contains("不选" + option.Name, StringComparison.Ordinal)) continue;
+                        target = option.Name;
+                        source = "option";
+                        break;
+                    }
+                }
+            }
+            catch { }
+        }
         if (target.Length == 0) return;
         pinnedName = target;
         pinnedAt = Time.GetTicksMsec() / 1000.0;
-        GD.Print($"[SpireCompanion] directive pin={pinnedName} text={text}");
+        chat.Notify($"已记住：下一屏优先选「{pinnedName}」；恢复自动执行后生效。");
+        GD.Print($"[SpireCompanion] directive pin={pinnedName} source={source} text={text}");
     }
 
     /// <summary>Apply a pinned instruction deterministically instead of asking the model again.</summary>
