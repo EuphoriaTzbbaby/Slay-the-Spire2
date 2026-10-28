@@ -298,12 +298,13 @@ internal sealed class ChatPanel : IDisposable
             SetBusy(true); info.Text = "搭子正在思考…"; question.Text = "";
             Append("你", text);
             ShowTyping();
-            _ = CompleteAsync(number, next, apiKey, text, snapshot);
+            var liveState = GameReader.QueryState("all");
+            _ = CompleteAsync(number, next, apiKey, text, snapshot, liveState);
         }
         catch (ArgumentException error) { info.Text = error.Message; }
         catch (Exception) { info.Text = "当前状态暂不可读，请稍后再试。"; }
     }
-    private async Task CompleteAsync(int number, ChatSettings config, string apiKey, string text, GameSnapshot snapshot)
+    private async Task CompleteAsync(int number, ChatSettings config, string apiKey, string text, GameSnapshot snapshot, string liveState)
     {
         try
         {
@@ -311,7 +312,7 @@ internal sealed class ChatPanel : IDisposable
             var screenChanged = lastScreenKey.Length > 0 && screenKey != lastScreenKey;
             lastScreenKey = screenKey;
             var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "", screenChanged,
-                ToolOnMain, message => Godot.GD.Print($"[SpireCompanion] chat_tool {message}")).ConfigureAwait(false);
+                ToolOnMain, message => Godot.GD.Print($"[SpireCompanion] chat_tool {message}"), liveState).ConfigureAwait(false);
             onMain(() =>
             {
                 if (disposed || number != requestNumber) return;
