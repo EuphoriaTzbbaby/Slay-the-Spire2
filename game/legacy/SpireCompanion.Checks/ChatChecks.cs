@@ -195,6 +195,17 @@ internal static class ChatChecks
             Require(merged[2].Name == "祭品");
             return Task.CompletedTask;
         });
+        await Check("Ranked ids keep the primary first and drop unknown ids", () =>
+        {
+            var (id, ids, reason) = ChoiceParser.ParseWithIds(
+                "{\"id\":\"2\",\"ids\":[\"2\",\"7\",\"99\"],\"reason\":\"移除两张\"}", new[] { "2", "7" });
+            Require(id == "2");
+            Require(ids.Length == 2 && ids[0] == "2" && ids[1] == "7");
+            Require(reason == "移除两张");
+            var bad = ChoiceParser.ParseWithIds("{\"id\":\"99\"}", new[] { "2" });
+            Require(bad.Id == null && bad.Ids.Length == 0);
+            return Task.CompletedTask;
+        });
         await Check("Personality modes differ and comfort matches the mode", () =>
         {
             var modes = new[] { "quiet", "normal", "chatty" };

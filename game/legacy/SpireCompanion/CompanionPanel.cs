@@ -10,7 +10,7 @@ internal sealed class CompanionPanel
 {
     /// <summary>Screens the companion can act on. One list for both the card and auto mode so they cannot drift.</summary>
     private static readonly HashSet<string> ExecutableKinds =
-        ["Reward", "Rest", "Shop", "Select", "Event", "Map", "Relic", "Rewards"];
+        ["Reward", "Rest", "Shop", "Select", "Event", "Map", "Relic", "Rewards", "Treasure"];
 
     private readonly ConcurrentQueue<Action> mainQueue = new();
     private ChatPanel chat = null!;
@@ -28,6 +28,8 @@ internal sealed class CompanionPanel
     private bool autoEnabled;
     private CancellationTokenSource? autoCts;
     private string autoPending = "";
+    private string[] autoPendingIds = [];
+    private int autoActionFails;
     private double autoWait;
     private string autoActedKey = "";
     private bool autoSelectPendingConfirm;
@@ -267,6 +269,7 @@ internal sealed class CompanionPanel
                 case "Map": BuildMapButtons(room); break;
                 case "Relic": BuildRelicButtons(room); break;
                 case "Rewards": BuildLootButtons(room); break;
+                case "Treasure": BuildTreasureButtons(room); break;
                 default: BuildShopButtons(room); break;
             }
             decisionStatus.Text = $"检测到 {room.Options.Length} 个可选项，点击后立即执行。";
@@ -338,6 +341,22 @@ internal sealed class CompanionPanel
         }
     }
 
+    private void BuildTreasureButtons(RoomView room)
+    {
+        foreach (var option in room.Options)
+        {
+            var isOpen = option.Id == "open";
+            var isProceed = option.Id == "proceed";
+            if (!isOpen && !isProceed && !int.TryParse(option.Id, out _)) continue;
+            var button = new Button { Text = isOpen ? option.Name : isProceed ? option.Name : $"拿「{option.Name}」" };
+            if (isOpen) button.Pressed += ExecuteOpenTreasure;
+            else if (isProceed) button.Pressed += ExecuteProceed;
+            else if (int.TryParse(option.Id, out var index)) button.Pressed += () => ExecuteClaimTreasure(index);
+            UiStyle.Secondary(button); UiStyle.Size(button, 42);
+            decisionButtons.AddChild(button);
+        }
+    }
+
     private void BuildLootButtons(RoomView room)
     {
         foreach (var option in room.Options)
@@ -399,6 +418,7 @@ internal sealed class CompanionPanel
             message = $"选择失败：{error.Message}";
             decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] rest_option: {error}");
+            NoteAutoFailure();
         }
         decisionSignature = "";
         Refresh();
@@ -483,15 +503,33 @@ internal sealed class CompanionPanel
         }
         var room = next.Room;
         if (room is null) { autoSelectPendingConfirm = false; return; }
-        if (room.Kind != "Select") autoSelectPendingConfirm = false;
+        if (room.Kind != "Select") { autoSelectPendingConfirm = false; autoPendingIds = []; }
         if (autoSelectPendingConfirm)
         {
             if (GameReader.CanConfirmSelection())
             {
-                try { GameReader.ConfirmSelection(); message = "自动操作：已确认选牌。"; autoWait = 1.0; }
+                try { GameReader.ConfirmSelection(); message = "自动操作：已确认选牌。"; autoWait = 1.0; autoPendingIds = []; }
                 catch (Exception error) { message = $"自动确认失败：{error.Message}"; StopAuto(); }
                 autoSelectPendingConfirm = false;
+                return;
             }
+            // Multi-card screens (e.g. remove two) need more picks before confirm unlocks.
+            while (autoPendingIds.Length > 0)
+            {
+                var pick = autoPendingIds[0];
+                autoPendingIds = autoPendingIds[1..];
+                if (!int.TryParse(pick, out var pickIndex)) continue;
+                if (!room.Options.Any(option => option.Id == pick && !option.Locked)) continue;
+                try
+                {
+                    GameReader.SelectGridCard(pickIndex);
+                    message = "自动操作：继续选下一张。";
+                    autoWait = 0.6;
+                }
+                catch (Exception error) { message = $"自动选牌失败：{error.Message}"; GD.PushError($"[SpireCompanion] select_next: {error}"); }
+                return;
+            }
+            StopAutoWith("选牌界面还需要继续选择，但模型只给了一个候选，已停止自动操作。");
             return;
         }
         // One action per screen state: identical options must not re-trigger, but a new dialogue page may.
@@ -519,10 +557,10 @@ internal sealed class CompanionPanel
             try
             {
                 var reply = await chat.DecideAsync(snapshot, options, token).ConfigureAwait(false);
-                var (id, reason) = ChoiceParser.ParseWithReason(reply, ids);
+                var (id, ranked, reason) = ChoiceParser.ParseWithIds(reply, ids);
                 if (id != null)
                 {
-                    mainQueue.Enqueue(() => ApplyAuto(snapshot, id, reason));
+                    mainQueue.Enqueue(() => ApplyAuto(snapshot, ranked, reason));
                     return;
                 }
                 // One retry: a malformed reply is usually noise, not a broken config.
@@ -559,10 +597,12 @@ internal sealed class CompanionPanel
         StopAuto();
     }
 
-    private void ApplyAuto(GameSnapshot snapshot, string? id, string reason)
+    private void ApplyAuto(GameSnapshot snapshot, string[] ids, string reason)
     {
         autoPending = "";
         if (!autoEnabled) return;
+        var id = ids.Length > 0 ? ids[0] : null;
+        autoPendingIds = ids.Length > 1 ? ids[1..] : [];
         if (id == null)
         {
             StopAutoWith("自动决策未返回合法选项，已停止自动操作。");
@@ -604,6 +644,9 @@ internal sealed class CompanionPanel
             case "Shop": ExecutePurchase(id); break;
             case "Event" when int.TryParse(id, out var eventIndex): ExecuteEvent(eventIndex); break;
             case "Map" when int.TryParse(id, out var mapIndex): ExecuteMap(mapIndex); break;
+            case "Treasure" when id == "open": ExecuteOpenTreasure(); break;
+            case "Treasure" when id == "proceed": ExecuteProceed(); break;
+            case "Treasure" when int.TryParse(id, out var treasureIndex): ExecuteClaimTreasure(treasureIndex); break;
             case "Rewards" when id == "proceed": ExecuteProceed(); break;
             case "Rewards" when int.TryParse(id, out var lootIndex): ExecuteLoot(lootIndex); break;
             case "Relic" when id == "skip": ExecuteSkipRelic(); break;
@@ -648,6 +691,43 @@ internal sealed class CompanionPanel
         Refresh();
     }
 
+    /// <summary>A failed action must not lock the screen forever: retry a couple of times, then stop.</summary>
+    private void NoteAutoFailure()
+    {
+        autoActionFails++;
+        autoActedKey = "";
+        autoWait = 3.0;
+        if (autoActionFails >= 3) StopAutoWith("自动操作连续失败三次，已停止自动操作。");
+    }
+
+    private void ExecuteOpenTreasure()
+    {
+        try { GameReader.OpenTreasure(); message = "已打开宝箱。"; decisionStatus.Text = message; GD.Print("[SpireCompanion] decision_result action=open_treasure ok"); }
+        catch (Exception error)
+        {
+            message = $"打开宝箱失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] treasure_open: {error}");
+            NoteAutoFailure();
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
+    private void ExecuteClaimTreasure(int index)
+    {
+        try { GameReader.ClaimTreasureRelic(index); message = "已拿取宝箱遗物。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=treasure_relic id={index} ok"); }
+        catch (Exception error)
+        {
+            message = $"拿取宝箱遗物失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] treasure_relic: {error}");
+            NoteAutoFailure();
+        }
+        decisionSignature = "";
+        Refresh();
+    }
+
     private void ExecuteLoot(int index)
     {
         try { GameReader.ClaimReward(index); message = "已领取该奖励。"; decisionStatus.Text = message; GD.Print($"[SpireCompanion] decision_result action=loot id={index} ok"); }
@@ -656,6 +736,7 @@ internal sealed class CompanionPanel
             message = $"领取失败：{error.Message}";
             decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] claim_reward: {error}");
+            NoteAutoFailure();
         }
         decisionSignature = "";
         Refresh();
@@ -669,6 +750,7 @@ internal sealed class CompanionPanel
             message = $"遗物选择失败：{error.Message}";
             decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] relic_select: {error}");
+            NoteAutoFailure();
         }
         decisionSignature = "";
         Refresh();
@@ -682,6 +764,7 @@ internal sealed class CompanionPanel
             message = $"跳过遗物失败：{error.Message}";
             decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] relic_skip: {error}");
+            NoteAutoFailure();
         }
         decisionSignature = "";
         Refresh();
@@ -695,6 +778,7 @@ internal sealed class CompanionPanel
             message = $"事件选择失败：{error.Message}";
             decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] event_option: {error}");
+            NoteAutoFailure();
         }
         decisionSignature = "";
         Refresh();
@@ -708,6 +792,7 @@ internal sealed class CompanionPanel
             message = $"选择路线失败：{error.Message}";
             decisionStatus.Text = message;
             GD.PushError($"[SpireCompanion] map_node: {error}");
+            NoteAutoFailure();
         }
         decisionSignature = "";
         Refresh();
