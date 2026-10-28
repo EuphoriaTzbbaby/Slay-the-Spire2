@@ -34,6 +34,7 @@ internal sealed class ChatPanel : IDisposable
     private readonly Button save = new() { Text = "保存设置" };
     private VBoxContainer welcome = null!;
     private bool busy;
+    private string lastScreenKey = "";
     private PanelContainer? typingBubble;
     private bool cancelRequested;
     private bool disposed;
@@ -284,7 +285,10 @@ internal sealed class ChatPanel : IDisposable
     {
         try
         {
-            var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "").ConfigureAwait(false);
+            var screenKey = snapshot.Scene + "|" + (snapshot.Room?.Id ?? "");
+            var screenChanged = lastScreenKey.Length > 0 && screenKey != lastScreenKey;
+            lastScreenKey = screenKey;
+            var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "", screenChanged).ConfigureAwait(false);
             onMain(() =>
             {
                 if (disposed || number != requestNumber) return;
