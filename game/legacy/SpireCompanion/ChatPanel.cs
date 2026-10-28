@@ -299,6 +299,8 @@ internal sealed class ChatPanel : IDisposable
             Append("你", text);
             ShowTyping();
             var liveState = GameReader.QueryState("all");
+            GD.Print("[SpireCompanion] live_state_read");
+            info.Text = "已读取实时状态，正在请求模型…";
             _ = CompleteAsync(number, next, apiKey, text, snapshot, liveState);
         }
         catch (ArgumentException error) { info.Text = error.Message; }
