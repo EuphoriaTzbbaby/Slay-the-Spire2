@@ -21,6 +21,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
@@ -216,12 +217,17 @@ internal static class GameReader
             }
             case MerchantRoom shop:
                 var inventory = shop.GetLocalInventory();
+                var proceed = LeaveOption(NMerchantRoom.Instance?.ProceedButton?.IsEnabled == true);
+                // Stock is only interactive after the inventory UI is open (same rule Spire Buddy follows).
+                if (inventory == null || NMerchantRoom.Instance?.Inventory?.IsOpen != true)
+                    return new RoomView("Shop", "商店", "先打开商店界面", [new RoomOptionView("open", "查看商品", "打开商店界面", false), proceed])
+                        { Id = ScreenId(shop) };
                 return new RoomView("Shop", "商店", "金币有限，先买最缺的",
-                    inventory?.AllEntries.Select((entry, index) =>
+                    inventory.AllEntries.Select((entry, index) =>
                     {
                         var (name, detail) = Entry(entry);
                         return new RoomOptionView(index.ToString(), name, detail, !entry.IsStocked || !entry.EnoughGold);
-                    }).Append(LeaveOption(NMerchantRoom.Instance?.ProceedButton?.IsEnabled == true)).ToArray() ?? []) { Id = ScreenId(shop) };
+                    }).Append(proceed).ToArray()) { Id = ScreenId(shop) };
             case RestSiteRoom rest:
                 return new RoomView("Rest", "休息点", "选择休息或升级",
                     rest.Options.Select((option, index) => new RoomOptionView(
@@ -293,6 +299,14 @@ internal static class GameReader
         var button = buttons.FirstOrDefault(candidate => string.Equals(candidate.Option.OptionId, optionId, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"该选项已不在界面中（界面有 {buttons.Count} 个选项）。");
         if (!button.Option.IsEnabled) throw new InvalidOperationException("该选项当前不可用。");
+        button.ForceClick();
+    }
+
+    public static void OpenShop()
+    {
+        var room = NMerchantRoom.Instance ?? throw new InvalidOperationException("商店界面已关闭。");
+        var button = room.MerchantButton ?? throw new InvalidOperationException("找不到商店按钮。");
+        if (!button.IsEnabled) throw new InvalidOperationException("商店按钮当前不可用。");
         button.ForceClick();
     }
 
