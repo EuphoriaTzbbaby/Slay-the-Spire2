@@ -54,6 +54,7 @@ internal sealed class CompanionPanel
     private Button solverStart = null!;
     private Button solverToggle = null!;
     private bool solverAuto;
+    private bool solverSuspended;
     private double solverRetry;
     private bool defeatNotified;
     private bool reportedReady;
@@ -576,6 +577,7 @@ internal sealed class CompanionPanel
     {
         if (!autoEnabled || autoSuspended) return;
         autoSuspended = true;
+        solverSuspended = true;
         autoCts?.Cancel();
         autoPending = "";
         message = why;
@@ -590,6 +592,7 @@ internal sealed class CompanionPanel
     {
         if (!autoEnabled) return;
         autoSuspended = false;
+        solverSuspended = false;
         message = "自动执行已恢复。";
         if (autoLabel != null) autoLabel.Text = "自动：开";
         if (decisionStatus != null) decisionStatus.Text = message;
@@ -600,6 +603,7 @@ internal sealed class CompanionPanel
     private void ToggleSolverAuto()
     {
         solverAuto = !solverAuto;
+        if (solverAuto) solverSuspended = false;
         solverToggle.Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关";
         message = solverAuto ? "已开启自动接管：每场战斗开始后自动交给 CombatSolver。" : "已关闭自动接管，战斗需要手动点。";
         new WindowState(autoEnabled, solverAuto).Save(windowStatePath);
@@ -610,7 +614,7 @@ internal sealed class CompanionPanel
     /// <summary>Hand every new combat to the solver while the switch is on; auto mode stays untouched.</summary>
     private void SolverAutoStep(GameSnapshot next)
     {
-        if (!solverAuto || SolverBridge.Owned || solverRetry > 0) return;
+        if (!solverAuto || solverSuspended || SolverBridge.Owned || solverRetry > 0) return;
         if (next.Enemies.Length == 0 || !SolverBridge.CanStart) return;
         try
         {
@@ -1075,6 +1079,15 @@ internal sealed class CompanionPanel
     {
         if (!autoEnabled)
         {
+            if (SolverBridge.Owned)
+            {
+                solverSuspended = true;
+                try { SolverBridge.StopOwned(); message = "快捷键 WW：已停止求解器。"; }
+                catch (Exception error) { message = "求解器停止未确认，请手动停止。"; GD.PushError($"[SpireCompanion] hotkey_solver_stop: {error}"); }
+                chat.Notify(message);
+                GD.Print("[SpireCompanion] hotkey_toggle action=solver_stop");
+                return;
+            }
             message = "自动操作未开启，双击 W 无效。";
             decisionStatus.Text = message;
             chat.Notify(message);
@@ -1106,6 +1119,7 @@ internal sealed class CompanionPanel
 
     private void PauseAll()
     {
+        solverSuspended = true;
         StopAuto();
         chat.Cancel();
         try { SolverBridge.StopOwned(); message = "本模块已暂停，已接管的求解器也已停止。"; }

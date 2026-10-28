@@ -18,6 +18,7 @@ internal sealed class ChatPanel : IDisposable
     private string? keyOrigin;
     private readonly OptionButton mode = new();
     private readonly Label info = new() { AutowrapMode = TextServer.AutowrapMode.WordSmart };
+    private readonly Label testInfo = new() { AutowrapMode = TextServer.AutowrapMode.WordSmart, Visible = false };
     private readonly ScrollContainer logScroll = new()
     {
         SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
@@ -62,6 +63,7 @@ internal sealed class ChatPanel : IDisposable
         importOld.Pressed += ImportLegacy;
         modelCard.AddChild(importOld);
         modelCard.AddChild(forget);
+        modelCard.AddChild(testInfo);
         modelCard.AddChild(UiStyle.Hint("密钥保存在本地加密档案中，系统只保存自动解锁凭据，不进入游戏设置或 Git。"));
         var actions = new HBoxContainer();
         actions.AddThemeConstantOverride("separation", 8);
@@ -176,6 +178,7 @@ internal sealed class ChatPanel : IDisposable
             probe = new CancellationTokenSource();
             int number = ++requestNumber;
             SetBusy(true); info.Text = "正在测试 API 连接和模型调用…";
+            testInfo.Visible = true; testInfo.Text = "正在测试 API 连接和模型调用…";
             _ = ProbeAsync(number, config, key.Text, probe);
         }
         catch (ArgumentException error) { info.Text = error.Message; }
@@ -186,14 +189,14 @@ internal sealed class ChatPanel : IDisposable
         try
         {
             _ = await client.TestAsync(config, apiKey, request.Token).ConfigureAwait(false);
-            onMain(() => { if (!disposed && number == requestNumber) info.Text = $"连接及模型调用成功（{elapsed.ElapsedMilliseconds} ms），现在可以发送消息。"; });
+            onMain(() => { if (!disposed && number == requestNumber) { info.Text = $"连接及模型调用成功（{elapsed.ElapsedMilliseconds} ms），现在可以发送消息。"; testInfo.Text = info.Text; } });
         }
         catch (OperationCanceledException)
-        { onMain(() => { if (!disposed && number == requestNumber) info.Text = "连接测试已取消。"; }); }
+        { onMain(() => { if (!disposed && number == requestNumber) { info.Text = "连接测试已取消。"; testInfo.Text = info.Text; } }); }
         catch (Exception error) when (error is ModelReplyException or ArgumentException)
-        { onMain(() => { if (!disposed && number == requestNumber) info.Text = error.Message; }); }
+        { onMain(() => { if (!disposed && number == requestNumber) { info.Text = error.Message; testInfo.Text = error.Message; } }); }
         catch (Exception)
-        { onMain(() => { if (!disposed && number == requestNumber) info.Text = "连接测试失败，请核对配置。"; }); }
+        { onMain(() => { if (!disposed && number == requestNumber) { info.Text = "连接测试失败，请核对配置。"; testInfo.Text = info.Text; } }); }
         finally
         {
             onMain(() =>
@@ -368,7 +371,7 @@ internal sealed class ChatPanel : IDisposable
         log.AddChild(row);
         while (log.GetChildCount() > 60) log.GetChild(0).Free();
         // Bounded visible history; model history is independently bounded by conversation pairs.
-        logScroll.SetDeferred(ScrollContainer.PropertyName.ScrollVertical, 1_000_000);
+        ScrollLogToEnd();
     }
 
     private void ClearLog()
@@ -404,7 +407,16 @@ internal sealed class ChatPanel : IDisposable
         row.AddChild(bubble);
         log.AddChild(row);
         typingBubble = bubble;
-        logScroll.SetDeferred(ScrollContainer.PropertyName.ScrollVertical, 1_000_000);
+        ScrollLogToEnd();
+    }
+
+    private async void ScrollLogToEnd()
+    {
+        // Wait one frame so the container has laid out the new bubble before scrolling.
+        var tree = (SceneTree)Engine.GetMainLoop();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        if (disposed || !GodotObject.IsInstanceValid(logScroll)) return;
+        logScroll.ScrollVertical = (int)logScroll.GetVScrollBar().MaxValue;
     }
 
     private void HideTyping()
