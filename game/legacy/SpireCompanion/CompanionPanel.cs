@@ -42,6 +42,7 @@ internal sealed class CompanionPanel
     private Button solverToggle = null!;
     private bool solverAuto;
     private double solverRetry;
+    private bool defeatNotified;
     private bool reportedReady;
     private bool layoutReported;
     private int ticks;
@@ -797,6 +798,16 @@ internal sealed class CompanionPanel
             var next = GameReader.Read();
             var solver = SolverBridge.Status();
             UpdateDecision(next);
+            if (GameReader.IsGameOver())
+            {
+                if (!defeatNotified)
+                {
+                    defeatNotified = true;
+                    chat.Notify(Personality.Comfort(chat.TalkMode));
+                    GD.Print("[SpireCompanion] defeat_notice");
+                }
+            }
+            else defeatNotified = false;
             SolverAutoStep(next);
             AutoStep(next);
             stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "只读建议";

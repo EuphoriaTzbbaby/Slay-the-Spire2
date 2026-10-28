@@ -284,6 +284,9 @@ internal sealed class ChatPanel : IDisposable
         { onMain(() => { if (!disposed) { if (cancelRequested) info.Text = "本次回复已取消。"; SetBusy(false); } }); }
     }
     /// <summary>One-shot structured choice for auto mode; never touches the visible conversation.</summary>
+    /// <summary>Current reply style, used for local lines such as the defeat note.</summary>
+    public string TalkMode => settings.TalkMode;
+
     public Task<string> DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, CancellationToken token) =>
         client.DecideAsync(settings, key.Text, snapshot, options, token);
 
