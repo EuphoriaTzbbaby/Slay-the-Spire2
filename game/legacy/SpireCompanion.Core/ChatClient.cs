@@ -53,7 +53,8 @@ public sealed class ChatClient : IDisposable
                 "状态里未包含的字段不代表零或不存在。不要把建议称作全局最优。玩家问到当前未提供的奖励或商店选项时，说明缺少选项信息。" +
                 "如果状态 JSON 里有 Room 字段，那就是当前界面真实的标题、描述与选项，按它回答，并可以逐项比较；不要另编选项。" +
                 "历史对话只用于理解追问，不能作为事实来源；卡牌名称与效果必须逐字来自本轮 snapshot 的 Cards、Deck 或 Room.Options。" +
-                "如果需要当前快照之外的信息，先调用工具：lookup_card / lookup_relic / lookup_potion 查图鉴，query_state 查实时局面（scope 可为 screen/hand/deck/relics/potions/enemies/run/map）。" +
+                "回答任何问题前，必须先调用 query_state 获取最新游戏状态，再结合结果回答；不要只凭上下文或记忆。" +
+                "如果需要当前快照之外的信息，再调用工具：lookup_card / lookup_relic / lookup_potion 查图鉴，query_state 查实时局面（scope 可为 screen/hand/deck/relics/potions/enemies/run/map）。" +
                 "查到之前不要凭记忆回答，工具结果才是权威；工具返回未找到就直说没有查到，不要编造。" +
                 (screenChanged ? "注意：相对上一轮，当前界面已经变化；历史对话里的卡牌、选项、价格不适用于当前界面，必须以 current_screen 和本轮 snapshot 为准。" : "") +
                 ScreenGuidance.For(snapshot) }
@@ -63,9 +64,11 @@ public sealed class ChatClient : IDisposable
             messages.Add(new { role = "user", content = turn.Question });
             messages.Add(new { role = "assistant", content = turn.Answer });
         }
+        var allowed = AllowedNames(snapshot);
         var context = JsonSerializer.Serialize(new
         {
             current_screen = SnapshotBrief.Describe(snapshot),
+            allowed_names = allowed,
             screen_changed = screenChanged,
             question,
             run_plan = plan,
@@ -136,7 +139,10 @@ public sealed class ChatClient : IDisposable
             JsonElement choice;
             try
             {
-                choice = await SendAsync(settings, apiKey, messages, cancellation, 1000, false, ChatTools).ConfigureAwait(false);
+                var forced = round == 0
+                    ? new { type = "function", function = new { name = "query_state" } }
+                    : null;
+                choice = await SendAsync(settings, apiKey, messages, cancellation, 1000, false, ChatTools, forced).ConfigureAwait(false);
             }
             catch (ModelReplyException error) when (round == 0 && error.Message.Contains("HTTP 400"))
             {
@@ -191,7 +197,7 @@ public sealed class ChatClient : IDisposable
     }
 
     private async Task<JsonElement> SendAsync(ChatSettings settings, string apiKey, List<object> messages,
-        CancellationToken cancellation, int maxTokens, bool structured, object[]? tools = null)
+        CancellationToken cancellation, int maxTokens, bool structured, object[]? tools = null, object? toolChoice = null)
     {
         var target = settings.RequestUri();
         var payload = new Dictionary<string, object>
@@ -201,6 +207,8 @@ public sealed class ChatClient : IDisposable
         // Reasoning-capable providers otherwise spend the whole output budget thinking and return an empty body.
         if (structured) payload["thinking"] = new { type = "disabled" };
         if (tools != null) payload["tools"] = tools;
+        if (toolChoice != null) payload["tool_choice"] = toolChoice;
+        payload["temperature"] = structured ? 0d : 0.2d;
         using var request = new HttpRequestMessage(HttpMethod.Post, target);
         if (!string.IsNullOrWhiteSpace(apiKey)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
@@ -212,7 +220,7 @@ public sealed class ChatClient : IDisposable
             if (structured && (int)response.StatusCode == 400)
             {
                 // A provider that rejects the thinking switch gets one retry with a larger plain budget.
-                return await SendAsync(settings, apiKey, messages, cancellation, maxTokens * 2, structured: false, tools).ConfigureAwait(false);
+                return await SendAsync(settings, apiKey, messages, cancellation, maxTokens * 2, structured: false, tools, toolChoice).ConfigureAwait(false);
             }
             if (!response.IsSuccessStatusCode)
                 throw new ModelReplyException((int)response.StatusCode switch
@@ -268,6 +276,19 @@ public sealed class ChatClient : IDisposable
     }
 
     /// <summary>Some compatible providers return content as a string, others as typed parts.</summary>
+    private static string[] AllowedNames(GameSnapshot snapshot)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(snapshot.Character)) names.Add(snapshot.Character);
+        foreach (var card in snapshot.Cards) names.Add(card.Name);
+        foreach (var card in snapshot.Deck) names.Add(card.Name);
+        foreach (var relic in snapshot.Relics) names.Add(relic.Name);
+        foreach (var potion in snapshot.Potions) names.Add(potion.Name);
+        if (snapshot.Room is { } room)
+            foreach (var option in room.Options) names.Add(option.Name);
+        return names.Where(name => !string.IsNullOrWhiteSpace(name)).Distinct().ToArray();
+    }
+
     private static string? MessageText(JsonElement message)
     {
         if (!message.TryGetProperty("content", out var content)) return null;
