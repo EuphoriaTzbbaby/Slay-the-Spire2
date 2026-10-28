@@ -21,6 +21,23 @@ public sealed class ChatClient : IDisposable
         AskAsync(settings, apiKey, "这是连接测试。请仅回复：连接成功。",
             new GameSnapshot("连接测试", "无游戏状态", 0, 0, 0, [], "无", false, "只测试模型连接"), [], cancellation);
 
+    /// <summary>One short in-character remark; no history, no JSON, thinking disabled to keep it cheap.</summary>
+    public async Task<string> CommentAsync(ChatSettings settings, string apiKey, GameSnapshot snapshot, string occasion,
+        CancellationToken cancellation)
+    {
+        var context = $"场景：{snapshot.Scene}；角色 {snapshot.Character}，HP {snapshot.Hp}/{snapshot.MaxHp}，金币 {snapshot.Gold}；" +
+            $"敌人：{(snapshot.Enemies.Length == 0 ? "无" : string.Join("、", snapshot.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}")))}；" +
+            $"手牌：{(snapshot.Cards.Length == 0 ? "无" : string.Join("、", snapshot.Cards.Select(c => c.Name)))}。" +
+            $"现在的情况：{occasion}";
+        var messages = new List<object>
+        {
+            new { role = "system", content = Personality.Persona + Personality.Instructions(settings.TalkMode) +
+                "现在轮到你主动说一句：不超过 30 个字，不用表情符号，不要给操作指令，只表达你的感受或一句点评。" },
+            new { role = "user", content = context }
+        };
+        return await PostAsync(settings, apiKey, messages, cancellation, 200, structured: true).ConfigureAwait(false);
+    }
+
     public async Task<string> AskAsync(ChatSettings settings, string apiKey, string question, GameSnapshot snapshot,
         IReadOnlyList<ChatTurn> history, CancellationToken cancellation)
     {

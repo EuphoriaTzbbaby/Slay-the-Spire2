@@ -76,8 +76,8 @@ internal static class GameReader
             Block = player.Creature.Block,
             Cards = state != null ? player.PlayerCombatState?.Hand.Cards.Select((c, i) => Card(c, i, true)).ToArray() ?? [] : [],
             Deck = player.Deck.Cards.Select((c, i) => Card(c, i, false)).ToArray(),
-            Relics = player.Relics.Select((r, i) => new ItemView(i, r.Id.Entry, Text(r.Title))).ToArray(),
-            Potions = player.PotionSlots.Select((p, i) => p == null ? null : new ItemView(i, p.Id.Entry, Text(p.Title)))
+            Relics = player.Relics.Select((r, i) => new ItemView(i, r.Id.Entry, Text(r.Title), Shorten(Plain(Text(r.DynamicDescription)), 80))).ToArray(),
+            Potions = player.PotionSlots.Select((p, i) => p == null ? null : new ItemView(i, p.Id.Entry, Text(p.Title), Shorten(Plain(Text(p.DynamicDescription)), 80)))
                 .OfType<ItemView>().ToArray(),
             Room = ReadRoom(run),
             Enemies = state?.Enemies.Select((e, i) => new EnemyView(i, e.Monster?.Id.Entry ?? "unknown",

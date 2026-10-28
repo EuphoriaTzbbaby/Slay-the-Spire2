@@ -33,6 +33,10 @@ internal sealed class CompanionPanel
     private string pendingShopId = "";
     private string pendingShopName = "";
     private double pendingShopWait;
+    private string lastCombatKey = "";
+    private bool lowHpWarned;
+    private double quipCooldown;
+    private bool quipBusy;
     private double autoWait;
     private string autoActedKey = "";
     private bool autoSelectPendingConfirm;
@@ -217,6 +221,7 @@ internal sealed class CompanionPanel
         }
         autoWait = Math.Max(0, autoWait - delta);
         solverRetry = Math.Max(0, solverRetry - delta);
+        quipCooldown = Math.Max(0, quipCooldown - delta);
         if (pendingShopId.Length > 0)
         {
             pendingShopWait -= delta;
@@ -468,6 +473,47 @@ internal sealed class CompanionPanel
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
         new WindowState(autoEnabled, solverAuto).Save(windowStatePath);
         Refresh();
+    }
+
+    /// <summary>One short in-character remark per combat, plus a single low-HP warning; quiet mode keeps only the warning.</summary>
+    private void ProactiveStep(GameSnapshot next)
+    {
+        if (quipBusy || quipCooldown > 0) return;
+        if (next.Enemies.Length == 0)
+        {
+            lastCombatKey = "";
+            lowHpWarned = false;
+            return;
+        }
+        var low = next.Hp * 100 <= next.MaxHp * 30;
+        if (low && !lowHpWarned)
+        {
+            lowHpWarned = true;
+            AskQuip(next, "血量已经很低，压力很大");
+            return;
+        }
+        var key = next.Scene + "|" + string.Join(",", next.Enemies.Select(enemy => enemy.Name + enemy.MaxHp));
+        if (chat.TalkMode == "quiet" || key == lastCombatKey) return;
+        lastCombatKey = key;
+        AskQuip(next, "战斗刚开始，看到这些敌人");
+    }
+
+    private void AskQuip(GameSnapshot snapshot, string occasion)
+    {
+        quipBusy = true;
+        quipCooldown = 25;
+        var (config, apiKey) = chat.RequestContext;
+        var token = new CancellationTokenSource(TimeSpan.FromSeconds(15)).Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var text = await chat.CommentAsync(config, apiKey, snapshot, occasion, token).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(text)) mainQueue.Enqueue(() => chat.SayProactive(text.Trim()));
+            }
+            catch (Exception error) { GD.PushWarning($"[SpireCompanion] quip_failed: {error.Message}"); }
+            finally { mainQueue.Enqueue(() => quipBusy = false); }
+        });
     }
 
     private void ToggleSolverAuto()
@@ -921,6 +967,7 @@ internal sealed class CompanionPanel
             else defeatNotified = false;
             SolverAutoStep(next);
             AutoStep(next);
+            ProactiveStep(next);
             stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "只读建议";
             stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : UiStyle.Good);
             status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n阶段：{(next.CanEndTurn ? "可操作" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";

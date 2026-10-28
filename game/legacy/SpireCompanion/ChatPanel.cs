@@ -299,6 +299,13 @@ internal sealed class ChatPanel : IDisposable
     /// <summary>Auto-mode note in the conversation; not added to model history.</summary>
     public void Notify(string text) => Append("自动", text);
 
+    public (ChatSettings Settings, string ApiKey) RequestContext => (settings, key.Text);
+
+    public Task<string> CommentAsync(ChatSettings config, string apiKey, GameSnapshot snapshot, string occasion, CancellationToken token) =>
+        client.CommentAsync(config, apiKey, snapshot, occasion, token);
+
+    public void SayProactive(string text) => Append("搭子", text);
+
     public void Cancel()
     {
         if (!busy) return;
