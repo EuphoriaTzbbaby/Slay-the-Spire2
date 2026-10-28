@@ -436,11 +436,26 @@ internal sealed class CompanionPanel
         foreach (var option in room.Options)
         {
             var id = option.Id;
-            var button = new Button { Text = id == "proceed" ? option.Name : $"买「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
-            button.Pressed += id == "proceed" ? ExecuteProceed : () => ExecutePurchase(id);
+            var isOpen = id == "open";
+            var button = new Button { Text = isOpen ? option.Name : id == "proceed" ? option.Name : $"买「{option.Name}」 · {option.Detail}", Disabled = option.Locked };
+            button.Pressed += isOpen ? ExecuteOpenShop : id == "proceed" ? ExecuteProceed : () => ExecutePurchase(id);
             UiStyle.Secondary(button); UiStyle.Size(button, 42);
             decisionButtons.AddChild(button);
         }
+    }
+
+    private void ExecuteOpenShop()
+    {
+        try { GameReader.OpenShop(); message = "已打开商店界面。"; decisionStatus.Text = message; GD.Print("[SpireCompanion] decision_result action=open_shop ok"); }
+        catch (Exception error)
+        {
+            message = $"打开商店失败：{error.Message}";
+            decisionStatus.Text = message;
+            GD.PushError($"[SpireCompanion] shop_open: {error}");
+            NoteAutoFailure();
+        }
+        decisionSignature = "";
+        Refresh();
     }
 
     private void ExecuteRest(string optionId)
@@ -661,6 +676,14 @@ internal sealed class CompanionPanel
             return;
         }
         if (room.Options.All(option => option.Locked)) return;
+        // Opening the shop UI is mechanical, not a strategic choice: do it without a model call.
+        if (room.Kind == "Shop" && room.Options.Any(option => option.Id == "open"))
+        {
+            autoActedKey = optionKey;
+            autoWait = 0.8;
+            ExecuteOpenShop();
+            return;
+        }
         autoPending = optionKey;
         GD.Print($"[SpireCompanion] auto_request kind={room.Kind} options={room.Options.Length} room={room.Id}");
         autoCts = new CancellationTokenSource();
@@ -787,6 +810,7 @@ internal sealed class CompanionPanel
         {
             case "Reward" when int.TryParse(id, out var index): ExecuteReward(index); break;
             case "Rest" or "Shop" when id == "proceed": ExecuteProceed(); break;
+            case "Shop" when id == "open": ExecuteOpenShop(); break;
             case "Rest": ExecuteRest(id); break;
             case "Shop":
                 pendingShopId = id;
