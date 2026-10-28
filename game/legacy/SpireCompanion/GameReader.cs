@@ -479,6 +479,34 @@ internal static class GameReader
         screen.OnMapPointSelectedLocally(travelable[index]);
     }
 
+    /// <summary>Read-only card lookup for the chat tool. Never mutates game state.</summary>
+    public static string? LookupCardText(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        try
+        {
+            var cards = ModelDb.AllCards.ToList();
+            CardModel? exact = null;
+            CardModel? partial = null;
+            foreach (var card in cards)
+            {
+                var title = Text(card.Title);
+                if (string.Equals(title, name, StringComparison.Ordinal)) { exact = card; break; }
+                if (partial == null && (title.Contains(name, StringComparison.Ordinal) || name.Contains(title, StringComparison.Ordinal)))
+                    partial = card;
+            }
+            var found = exact ?? partial;
+            if (found == null) return null;
+            var cost = found.EnergyCost.CostsX ? "X" : found.EnergyCost.GetAmountToSpend().ToString();
+            return $"{Text(found.Title)}（{cost} 费）：{Shorten(CardText(found), 200)}";
+        }
+        catch (Exception error)
+        {
+            Godot.GD.PushWarning($"[SpireCompanion] lookup_card: {error.Message}");
+            return null;
+        }
+    }
+
     public static bool IsGameOver() => NOverlayStack.Instance?.Peek() is NGameOverScreen;
 
     public static bool CanProceed()
