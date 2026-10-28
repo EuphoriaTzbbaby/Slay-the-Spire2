@@ -55,6 +55,10 @@ internal sealed class CompanionPanel
     private Button solverToggle = null!;
     private bool solverAuto;
     private bool solverSuspended;
+    private bool voiceEnabled;
+    private Button voiceToggle = null!;
+    private Label voiceStatus = null!;
+    private readonly VoiceClient voice = new();
     private double solverRetry;
     private bool defeatNotified;
     private bool reportedReady;
@@ -138,6 +142,7 @@ internal sealed class CompanionPanel
         var saved = WindowState.Load(windowStatePath);
         autoEnabled = saved.AutoEnabled;
         solverAuto = saved.SolverAuto;
+        voiceEnabled = saved.VoiceEnabled;
         autoToggle = new Button { Text = autoEnabled ? "局外自动操作：开" : "局外自动操作：关" };
         autoToggle.Pressed += ToggleAuto;
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
@@ -145,6 +150,16 @@ internal sealed class CompanionPanel
         controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励结算/休息点/商店/选牌/事件/地图/遗物/宝箱里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。发消息或取消会暂停自动，点「恢复自动执行」继续。"));
         resumeAuto = new Button { Text = "恢复自动执行", Visible = false };
         resumeAuto.Pressed += ResumeAuto;
+        voiceToggle = new Button { Text = voiceEnabled ? "语音输入：开" : "语音输入：关" };
+        voiceToggle.Pressed += ToggleVoice;
+        UiStyle.Secondary(voiceToggle); UiStyle.Size(voiceToggle, 40);
+        controlCard.AddChild(voiceToggle);
+        voiceStatus = new Label { Text = voiceEnabled ? "语音：等待连接" : "语音：未开启" };
+        voiceStatus.AddThemeColorOverride("font_color", UiStyle.Muted);
+        controlCard.AddChild(voiceStatus);
+        voice.StatusChanged += status => mainQueue.Enqueue(() => { if (voiceStatus != null) voiceStatus.Text = "语音：" + status; });
+        voice.TextReceived += (id, text) => mainQueue.Enqueue(() => HandleVoiceText(id, text));
+        voice.IntentReceived += (id, intent) => mainQueue.Enqueue(() => HandleVoiceIntent(id, intent));
         UiStyle.Primary(resumeAuto); UiStyle.Size(resumeAuto, 42);
         controlCard.AddChild(resumeAuto);
         solverToggle = new Button { Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关" };
@@ -182,6 +197,7 @@ internal sealed class CompanionPanel
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
         solverToggle.Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关";
         tree.Root.AddChild(layer);
+        if (voiceEnabled) StartVoice();
         tree.ProcessFrame += () => Tick(tree.Root.GetProcessDeltaTime());
         tree.Root.TreeExiting += () =>
         {
@@ -527,7 +543,7 @@ internal sealed class CompanionPanel
         if (!autoEnabled) StopAuto();
         else { autoActedKey = ""; autoWait = 0; }
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
-        new WindowState(autoEnabled, solverAuto).Save(windowStatePath);
+        new WindowState(autoEnabled, solverAuto, voiceEnabled).Save(windowStatePath);
         Refresh();
     }
 
@@ -600,13 +616,84 @@ internal sealed class CompanionPanel
         Refresh();
     }
 
+    private void ToggleVoice()
+    {
+        voiceEnabled = !voiceEnabled;
+        voiceToggle.Text = voiceEnabled ? "语音输入：开" : "语音输入：关";
+        new WindowState(autoEnabled, solverAuto, voiceEnabled).Save(windowStatePath);
+        if (voiceEnabled) StartVoice(); else { voice.Stop(); voiceStatus.Text = "语音：未开启"; }
+    }
+
+    private void StartVoice()
+    {
+        try
+        {
+            var directory = ProjectSettings.GlobalizePath("user://spire-companion");
+            Directory.CreateDirectory(directory);
+            var token = Guid.NewGuid().ToString("N");
+            var sessionPath = Path.Combine(directory, "voice-session.json");
+            File.WriteAllText(sessionPath, System.Text.Json.JsonSerializer.Serialize(new { port = 17860, token, url = "ws://127.0.0.1:17860" }));
+            voice.Start(17860, token);
+            message = $"语音输入已开启，会话信息写入 {sessionPath}；启动 mock 或语音服务后会自动连接。";
+            GD.Print($"[SpireCompanion] voice_start path={sessionPath}");
+        }
+        catch (Exception error)
+        {
+            voiceEnabled = false;
+            voiceToggle.Text = "语音输入：关";
+            message = $"语音启动失败：{error.Message}";
+            GD.PushError($"[SpireCompanion] voice_start: {error}");
+        }
+        if (decisionStatus != null) decisionStatus.Text = message;
+    }
+
+    private void HandleVoiceText(string inputId, string text)
+    {
+        if (chat.Busy)
+        {
+            message = "语音输入被忽略：上一条还在回复。";
+            _ = voice.AckAsync(inputId, "rejected");
+        }
+        else
+        {
+            chat.SubmitExternal(text);
+            message = $"语音输入：{text}";
+            _ = voice.AckAsync(inputId, "accepted");
+        }
+        if (decisionStatus != null) decisionStatus.Text = message;
+        GD.Print($"[SpireCompanion] voice_input id={inputId} text={text}");
+    }
+
+    private void HandleVoiceIntent(string inputId, string intent)
+    {
+        var handled = true;
+        switch (intent)
+        {
+            case "pause":
+                if (autoEnabled) SuspendAuto("语音：已暂停自动操作，说「恢复」继续。");
+                if (SolverBridge.Owned) { solverSuspended = true; try { SolverBridge.StopOwned(); } catch (Exception e) { GD.PushError($"[SpireCompanion] voice_stop_solver: {e}"); } }
+                break;
+            case "resume":
+                ResumeAuto();
+                chat.Notify("语音：已恢复自动执行。");
+                break;
+            case "handoff":
+                try { if (!SolverBridge.Owned && SolverBridge.CanStart) SolverBridge.Start(); }
+                catch (Exception error) { GD.PushWarning($"[SpireCompanion] voice_handoff: {error.Message}"); handled = false; }
+                break;
+            default: handled = false; break;
+        }
+        _ = voice.AckAsync(inputId, handled ? "accepted" : "ignored");
+        GD.Print($"[SpireCompanion] voice_intent intent={intent} handled={handled}");
+    }
+
     private void ToggleSolverAuto()
     {
         solverAuto = !solverAuto;
         if (solverAuto) solverSuspended = false;
         solverToggle.Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关";
         message = solverAuto ? "已开启自动接管：每场战斗开始后自动交给 CombatSolver。" : "已关闭自动接管，战斗需要手动点。";
-        new WindowState(autoEnabled, solverAuto).Save(windowStatePath);
+        new WindowState(autoEnabled, solverAuto, voiceEnabled).Save(windowStatePath);
         solverRetry = 0;
         Refresh();
     }
@@ -635,7 +722,7 @@ internal sealed class CompanionPanel
         autoEnabled = false;
         if (autoToggle != null) autoToggle.Text = "局外自动操作：关";
         if (autoLabel != null) autoLabel.Text = "自动：关";
-        if (windowStatePath.Length > 0) new WindowState(false, solverAuto).Save(windowStatePath);
+        if (windowStatePath.Length > 0) new WindowState(false, solverAuto, voiceEnabled).Save(windowStatePath);
         autoPending = "";
         autoCts?.Cancel();
         autoCts = null;

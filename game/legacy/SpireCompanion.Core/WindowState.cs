@@ -6,7 +6,7 @@ namespace SpireCompanion.Core;
 /// Small window preferences that must survive a restart. Only non-secret UI flags live here;
 /// a broken file falls back to defaults instead of blocking the panel.
 /// </summary>
-public sealed record WindowState(bool AutoEnabled = false, bool SolverAuto = false)
+public sealed record WindowState(bool AutoEnabled = false, bool SolverAuto = false, bool VoiceEnabled = false)
 {
     public static WindowState Load(string path)
     {
