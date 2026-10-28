@@ -195,6 +195,17 @@ internal static class ChatChecks
             Require(merged[2].Name == "祭品");
             return Task.CompletedTask;
         });
+        await Check("Personality modes differ and comfort matches the mode", () =>
+        {
+            var modes = new[] { "quiet", "normal", "chatty" };
+            var instructions = modes.Select(Personality.Instructions).ToArray();
+            var comforts = modes.Select(Personality.Comfort).ToArray();
+            Require(instructions.All(text => text.Length > 10));
+            Require(instructions.Distinct().Count() == 3);
+            Require(comforts.Distinct().Count() == 3);
+            Require(Personality.Persona.Contains("奶龙"));
+            return Task.CompletedTask;
+        });
         await Check("Markdown replies become BBCode and raw brackets are escaped", () =>
         {
             var text = ChatMarkdown.ToBbcode("**结论**：先防御。\n- 打 `打击`\n# 标题\n[链接](https://example.com)\n```\ncode\n```\n数值 [2]");

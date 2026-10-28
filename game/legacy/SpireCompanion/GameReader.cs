@@ -20,6 +20,7 @@ using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.RestSite;
@@ -390,6 +391,8 @@ internal static class GameReader
         if (index < 0 || index >= travelable.Count) throw new InvalidOperationException("该节点当前不可前往。");
         screen.OnMapPointSelectedLocally(travelable[index]);
     }
+
+    public static bool IsGameOver() => NOverlayStack.Instance?.Peek() is NGameOverScreen;
 
     public static bool CanProceed()
     {
