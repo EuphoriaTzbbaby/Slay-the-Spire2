@@ -57,7 +57,6 @@ internal static class GameReader
         var conflict = AppDomain.CurrentDomain.GetAssemblies()
             .Select(a => a.GetName().Name).FirstOrDefault(n => ConflictingControllers.Contains(n));
         var reason = run.Players.Count != 1 ? "当前仅支持单人" :
-            !player.Character.Id.Entry.Contains("IRONCLAD", StringComparison.OrdinalIgnoreCase) ? "当前仅支持铁甲战士" :
             conflict != null ? $"检测到 {conflict}，本阶段仅只读，避免双重控制" :
             manager.NetService?.IsGameLoading == true ? "游戏加载中" :
             state == null ? "当前不在战斗中" :

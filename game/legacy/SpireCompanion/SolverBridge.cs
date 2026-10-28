@@ -39,8 +39,8 @@ internal static class SolverBridge
             var manager = RunManager.Instance;
             var run = manager.IsInProgress ? manager.DebugOnlyGetState() : null;
             var me = run != null ? LocalContext.GetMe(run) : null;
+            // Let the solver decide whether it supports this character; it refuses explicitly.
             return run?.Players.Count == 1 && me != null
-                && me.Character.Id.Entry.Contains("IRONCLAD", StringComparison.OrdinalIgnoreCase)
                 && CombatManager.Instance.IsInProgress && manager.NetService?.IsGameLoading != true
                 && !AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name is "SpireBuddy" or "STS2AIAgent");
         }
@@ -52,7 +52,7 @@ internal static class SolverBridge
     }
     public static void Start()
     {
-        if (!CanStart) throw new InvalidOperationException("需要单人铁甲战士战斗，且不能同时加载其他自动控制器");
+        if (!CanStart) throw new InvalidOperationException("需要单人战斗，且不能同时加载其他自动控制器");
         var solver = Probe() ?? throw new InvalidOperationException("CombatSolver 未加载");
         if (solver.Status().Disabled && !disabledByUs) throw new InvalidOperationException("求解器已被手动禁用，请先在其界面启用");
         var state = CombatManager.Instance.DebugOnlyGetState() ?? throw new InvalidOperationException("战斗状态未就绪");
