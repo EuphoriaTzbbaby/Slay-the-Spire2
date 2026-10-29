@@ -27,18 +27,21 @@ def token() -> str:
     raise SystemExit("Set GITHUB_TOKEN or store a github.com token in the macOS keychain.")
 
 
+def curl(args: list[str]) -> tuple[int, str]:
+    result = subprocess.run(["curl", "-sS", "--max-time", "180", "-w", "\n%{http_code}", *args], capture_output=True, text=True)
+    body, _, code = result.stdout.rpartition("\n")
+    return int(code or 0), body
+
+
 def call(url: str, auth: str, method: str = "GET", body: dict | None = None) -> tuple[int, dict]:
-    data = json.dumps(body).encode() if body is not None else None
-    request = urllib.request.Request(url, data=data, method=method, headers={
-        "Authorization": f"Bearer {auth}",
-        "Accept": "application/vnd.github+json",
-        "Content-Type": "application/json",
-    })
+    args = ["-X", method, "-H", f"Authorization: Bearer {auth}", "-H", "Accept: application/vnd.github+json", url]
+    if body is not None:
+        args += ["-H", "Content-Type: application/json", "-d", json.dumps(body)]
+    code, text = curl(args)
     try:
-        with urllib.request.urlopen(request) as response:
-            return response.status, json.loads(response.read() or b"{}")
-    except urllib.error.HTTPError as error:
-        return error.code, json.loads(error.read() or b"{}")
+        return code, json.loads(text or "{}")
+    except json.JSONDecodeError:
+        return code, {"raw": text[:300]}
 
 
 def main() -> int:
@@ -60,14 +63,22 @@ def main() -> int:
     for asset in release.get("assets", []):
         if asset["name"] == ASSET:
             call(f"https://api.github.com/repos/{REPO}/releases/assets/{asset['id']}", auth, "DELETE")
-    upload = urllib.request.Request(
+    status, asset = call(
         f"https://uploads.github.com/repos/{REPO}/releases/{release_id}/assets?name={ASSET}",
-        data=ZIP.read_bytes(), method="POST",
-        headers={"Authorization": f"Bearer {auth}", "Content-Type": "application/zip"},
-    )
-    with urllib.request.urlopen(upload) as response:
-        asset = json.loads(response.read())
-    print(f"Published: {asset['browser_download_url']}")
+        auth, "POST")
+    if status not in (200, 201):
+        # curl uploads need the file appended after the JSON body is not used here.
+        result = subprocess.run(
+            ["curl", "-sS", "--max-time", "300", "-X", "POST",
+             "-H", f"Authorization: Bearer {auth}", "-H", "Content-Type: application/zip",
+             "--data-binary", f"@{ZIP}",
+             f"https://uploads.github.com/repos/{REPO}/releases/{release_id}/assets?name={ASSET}"],
+            capture_output=True, text=True)
+        try:
+            asset = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            raise SystemExit(f"Upload failed: {result.stdout[:300]} {result.stderr[:300]}")
+    print(f"Published: {asset.get('browser_download_url')}")
     return 0
 
 
