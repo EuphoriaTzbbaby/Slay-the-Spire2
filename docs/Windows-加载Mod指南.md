@@ -203,7 +203,28 @@ https://github.com/EuphoriaTzbbaby/Slay-the-Spire2/releases/download/latest/Spir
 3. 解压后双击 `install.bat`；
 4. 重新启动游戏。
 
-开发侧每次更新后运行：
+### 队友也有仓库时（git 更新）
+
+在仓库根目录双击 `scripts\update_from_repo.bat`，它会：
+
+1. `git pull --ff-only`；
+2. 自动找 Steam 游戏目录；
+3. 用本机游戏数据编译；
+4. 安装到 `mods\SpireCompanion`。
+
+前提：已装 .NET 9 SDK 和 Python 3，并且有仓库访问权限。
+
+也可以手动：
+
+```bat
+git pull --ff-only
+python scripts\game_dev.py build --game-data "C:/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64"
+python scripts\game_dev.py install --mods-dir "C:/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2/mods"
+```
+
+更新完重启游戏。
+
+### 开发侧每次更新后运行：
 
 ```bash
 python3 scripts/package_release.py     # 生成本地 zip
