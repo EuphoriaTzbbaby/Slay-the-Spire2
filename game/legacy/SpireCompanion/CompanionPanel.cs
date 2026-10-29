@@ -199,6 +199,7 @@ internal sealed class CompanionPanel
         planLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
         controlCard.AddChild(planLabel);
         planPath = Path.Combine(ProjectSettings.GlobalizePath("user://spire-companion"), "run-plan.json");
+        CharacterCatalog.UserDirectory = Path.Combine(ProjectSettings.GlobalizePath("user://spire-companion"), "characters");
         LoadPlan();
 
         layer.AddChild(panel);
