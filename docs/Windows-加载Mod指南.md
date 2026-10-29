@@ -187,3 +187,27 @@ python scripts/game_dev.py install --mods-dir "C:/Program Files (x86)/Steam/stea
 # 构建 + 安装（不自动启动游戏；macOS 才有自动启动）
 python scripts/game_dev.py run --no-launch --game-data "C:/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2/data_sts2_windows_x86_64" --mods-dir "C:/Program Files (x86)/Steam/steamapps/common/Slay the Spire 2/mods"
 ```
+
+## 更新 Mod（队友不用会构建）
+
+固定下载地址：
+
+```
+https://github.com/EuphoriaTzbbaby/Slay-the-Spire2/releases/download/latest/SpireCompanion-win64.zip
+```
+
+更新步骤：
+
+1. **完全退出游戏**（安装脚本会检测，游戏在运行会拒绝安装）；
+2. 下载上面的 zip（或双击压缩包里的 `update.bat` 自动下载）；
+3. 解压后双击 `install.bat`；
+4. 重新启动游戏。
+
+开发侧每次更新后运行：
+
+```bash
+python3 scripts/package_release.py     # 生成本地 zip
+python3 scripts/publish_release.py     # 覆盖发布 latest release
+```
+
+队友不需要装 .NET、Python 或源码，只需要 zip + 双击安装。
