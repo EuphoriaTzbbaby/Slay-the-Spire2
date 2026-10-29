@@ -1,4 +1,9 @@
 $ErrorActionPreference = "Stop"
+$running = Get-Process -Name "SlayTheSpire2" -ErrorAction SilentlyContinue
+if ($running) {
+    Write-Host "检测到游戏正在运行。请先完全退出游戏，再运行安装（否则 DLL 被占用会失败）。" -ForegroundColor Red
+    exit 1
+}
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $modName = "SpireCompanion"
 

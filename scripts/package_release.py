@@ -30,13 +30,15 @@ def main() -> int:
         shutil.copy2(source, mod_dir / name)
     shutil.copy2(ROOT / "scripts/install_windows.bat", STAGING / "install.bat")
     shutil.copy2(ROOT / "scripts/install_windows.ps1", STAGING / "install.ps1")
+    shutil.copy2(ROOT / "scripts/update_windows.bat", STAGING / "update.bat")
     (STAGING / "README.txt").write_text(
         "尖塔 AI 陪玩（开发版）\n\n"
         "1. 解压整个压缩包；\n"
         "2. 双击 install.bat；\n"
         "3. 按提示确认游戏目录；\n"
         "4. 自动战斗必须另外安装 CombatSolver 与 RitsuLib（创意工坊订阅）；\n"
-        "5. 启动游戏，确认 Mod 已启用，进游戏按 F9。\n",
+        "5. 启动游戏，确认 Mod 已启用，进游戏按 F9。\n\n"
+        "以后更新：重新下载同一个 zip，退出游戏后再次双击 install.bat。\n",
         encoding="utf-8",
     )
     archive = DIST / "SpireCompanion-win64.zip"
