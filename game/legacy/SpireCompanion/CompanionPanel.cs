@@ -859,6 +859,7 @@ internal sealed class CompanionPanel
     {
         var ids = options.Select(option => option.Id).ToArray();
         var skipVetoed = false;
+        var duplicateVetoes = new HashSet<string>();
         for (int attempt = 0; attempt < 2; attempt++)
         {
             try
@@ -891,6 +892,16 @@ internal sealed class CompanionPanel
                             mainQueue.Enqueue(() => ApplyAuto(snapshot, ["skip"], "牌组已达上限"));
                             return;
                         }
+                    }
+                    // Duplicate guard: a third copy of the same card almost never earns its slot.
+                    if (id != "skip" && id != "keep" && ShouldVetoDuplicate(snapshot, options, id) && duplicateVetoes.Add(id))
+                    {
+                        var duplicateName = options.FirstOrDefault(option => option.Id == id)?.Name ?? id;
+                        GD.Print($"[SpireCompanion] reward_duplicate_veto deck={snapshot.Deck.Length} card={duplicateName} copies={CopiesInDeck(snapshot, duplicateName)}");
+                        options = options.Where(option => option.Id != id).ToArray();
+                        ids = options.Select(option => option.Id).ToArray();
+                        attempt--;
+                        continue;
                     }
                     // Multi-card screens: ask for the remaining picks instead of stopping at one.
                     if (required > 1 && ranked.Length < required)
@@ -985,6 +996,18 @@ internal sealed class CompanionPanel
 
     private const int RewardSkipFloor = 20;
     private const int RewardDeckCap = 30;
+    private const int RewardCopyLimit = 2;
+
+    private static int CopiesInDeck(GameSnapshot snapshot, string title) =>
+        snapshot.Deck.Count(card => card.Name == title);
+
+    /// <summary>A reward may only top up a card the deck already holds twice at most.</summary>
+    private static bool ShouldVetoDuplicate(GameSnapshot snapshot, RoomOptionView[] options, string id)
+    {
+        if (snapshot.Room is not { Kind: "Reward" }) return false;
+        var name = options.FirstOrDefault(option => option.Id == id)?.Name;
+        return !string.IsNullOrEmpty(name) && CopiesInDeck(snapshot, name) >= RewardCopyLimit;
+    }
 
     private void StopAutoWith(string notice)
     {
