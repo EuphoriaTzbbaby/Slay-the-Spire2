@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "kind": "request",
+  "id": "req-stop-001",
+  "method": "listening.stop",
+  "params": {}
+}

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "kind": "request",
+  "id": "req-continuous-001",
+  "method": "listening.start",
+  "params": {
+    "mode": "continuous"
+  }
+}

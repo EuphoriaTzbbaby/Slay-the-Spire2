@@ -76,6 +76,7 @@ class VoiceSession:
         self.available = asyncio.Event()
         self.input_id: str | None = None
         self.input_deadline = 0.0
+        self.listening_mode = "wake"
 
     async def send(self, payload):
         async with self.send_lock:
@@ -91,7 +92,8 @@ class VoiceSession:
 
     def status(self):
         return {"service": "ready", "listening": "disabled" if self.recognition is None else
-                "listening" if self.input_id else "waiting_wake",
+                "continuous" if self.listening_mode == "continuous" else "listening" if self.input_id else "waiting_wake",
+                "listening_mode": self.listening_mode if self.recognition is not None else None,
                 "playback": "playing" if self.current else "idle", "queue_length": len(self.queue),
                 "current_utterance_id": self.current.id if self.current else None,
                 "echo_guard": "mute_during_playback"}
@@ -155,12 +157,18 @@ class VoiceSession:
             self.authenticated = True
             if self.player is None:
                 self.player = asyncio.create_task(self.play_loop())
-            return {"session_id": self.id, "features": ["asr", "tts", "push_to_talk"], **self.status()}
+            return {"session_id": self.id, "features": ["asr", "tts", "push_to_talk", "continuous_listening"], **self.status()}
         if not self.authenticated:
             raise ProtocolError("auth_failed", "请先完成 session.hello。")
         if method in ("service.status", "service.ping"):
             return self.status()
         if method == "listening.start":
+            mode = params.get("mode", "wake")
+            if mode not in ("wake", "continuous"):
+                raise ProtocolError("invalid_params", "mode 只支持 wake 或 continuous。")
+            if self.recognition is not None and self.listening_mode != mode:
+                await self.stop_listening()
+            self.listening_mode = mode
             if self.recognition is None:
                 await asyncio.to_thread(self.microphone.start)
                 self.recognition = asyncio.create_task(self.recognize_loop())
@@ -208,15 +216,16 @@ class VoiceSession:
             return self.status()
         if method == "settings.get":
             return {"language": "zh-CN", "wake_word": "搭子", "echo_guard": "mute_during_playback",
-                    "adjustable": [], "note": "基本调试版使用系统中文音色；播报时点击说一句可打断。"}
+                    "adjustable": [], "note": "基本调试版使用系统中文音色；当前游戏侧默认文字回复。"}
         raise ProtocolError("method_not_supported", f"基本调试版暂不支持 {method}。")
 
-    async def begin_input(self, wake=False):
+    async def begin_input(self, wake=False, reset_audio=True):
         if self.input_id:
             await self.event("recognition.cancelled", input_id=self.input_id, reason="replaced")
         self.input_id = "input-" + uuid.uuid4().hex
         self.input_deadline = time.monotonic() + 15
-        self.microphone.reset()
+        if reset_audio:
+            self.microphone.reset()
         if wake:
             await self.event("wake.detected", input_id=self.input_id, wake_word="搭子")
         await self.event("recognition.started", input_id=self.input_id)
@@ -234,12 +243,18 @@ class VoiceSession:
                 if not text or self.current is not None:
                     continue
                 text = compact(text)
+                if not text:
+                    continue
                 if self.input_id is None:
-                    if not text.startswith("搭子"):
-                        continue
-                    await self.clear(True, "wake")
-                    await self.begin_input(wake=True)
-                    text = text[2:]
+                    if self.listening_mode == "continuous":
+                        # Vosk has ended this utterance. Keep subsequent PCM for the next one.
+                        await self.begin_input(reset_audio=False)
+                    else:
+                        if not text.startswith("搭子"):
+                            continue
+                        await self.clear(True, "wake")
+                        await self.begin_input(wake=True)
+                        text = text[2:]
                 if text:
                     await self.event("input.final", input_id=self.input_id, text=text,
                                      language="zh-CN", intent=intent_for(text))

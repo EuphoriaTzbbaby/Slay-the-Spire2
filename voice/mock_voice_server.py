@@ -34,7 +34,7 @@ class MockSpeech:
 async def send_input(server, text):
     session = server.owner
     if session is None or not session.authenticated or session.recognition is None:
-        print("[mock] 先在游戏聊天页选择「语音 → 文字」或「语音 → 语音」，等待连接。", flush=True)
+        print("[mock] 先在游戏按 QQ 或点「开始语音」，等待显示持续监听。", flush=True)
         return
     await session.event("input.final", input_id="mock-" + uuid.uuid4().hex,
                         text=text, language="zh-CN", intent=intent_for(text))

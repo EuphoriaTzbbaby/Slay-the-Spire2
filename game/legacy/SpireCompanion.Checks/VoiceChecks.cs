@@ -48,6 +48,9 @@ internal static class VoiceChecks
                 Require(await client.InterruptAsync());
                 Require(await inputs.WaitAsync(TimeSpan.FromSeconds(5)));
                 Require(await inputs.WaitAsync(TimeSpan.FromSeconds(5)));
+                Require(!await client.StartListeningAsync(continuous: true)); // old Python response is not success
+                Require(await client.StartListeningAsync(continuous: true));
+                Require(await client.StopListeningAsync());
                 await Task.Delay(100);
                 Require(texts.Count == session + 1 && intents.Count == session + 1);
                 client.Stop();
@@ -58,6 +61,28 @@ internal static class VoiceChecks
             Console.WriteLine("PASS C# ↔ Python: handshake, UTF-8 fragments, input deduplication, session isolation, TTS, interrupt and restart");
         }
         finally { client.Stop(); }
+    }
+
+    public static int PendingInputs()
+    {
+        var queue = new VoiceInputQueue();
+        Require(queue.TryEnqueue("session", "1", "第一句"));
+        Require(queue.TryEnqueue("session", "2", "第二句"));
+        Require(queue.Take("session")?.Text == "第一句");
+        Require(queue.Take("session")?.Text == "第二句");
+        Require(queue.Take("session") == null);
+        Console.WriteLine("PASS Continuous voice turns retain FIFO order while the model is busy");
+
+        Require(queue.TryEnqueue("old", "old", "旧会话"));
+        Require(queue.TryEnqueue("new", "new", "新会话"));
+        Require(queue.Take("new")?.InputId == "new");
+        Require(queue.Take("new") == null);
+        for (int i = 0; i < 4; i++) Require(queue.TryEnqueue("new", i.ToString(), "排队"));
+        Require(!queue.TryEnqueue("new", "overflow", "拒绝"));
+        queue.Clear();
+        Require(queue.Count == 0 && queue.Take("new") == null);
+        Console.WriteLine("PASS Voice close clears queued turns; stale sessions and queue overflow never replay");
+        return 2;
     }
 
     private static void Require(bool condition)

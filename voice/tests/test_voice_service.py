@@ -25,11 +25,21 @@ class FakeMicrophone:
         self.stopped = 0
         self.muted = False
         self.chunks = queue.Queue()
+        self.resets = 0
 
-    def start(self): self.started += 1
-    def stop(self): self.stopped += 1
-    def reset(self): pass
+    def start(self):
+        self.started += 1
+        self.drain()
+    def stop(self):
+        self.stopped += 1
+        self.drain()
+    def reset(self): self.resets += 1
     def mute(self, value): self.muted = value
+
+    def drain(self):
+        while not self.chunks.empty():
+            try: self.chunks.get_nowait()
+            except queue.Empty: break
 
     def next_result(self):
         try: return self.chunks.get(timeout=0.02)
@@ -154,6 +164,57 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(second["data"]["intent"], "pause")
         self.assertNotEqual(result["data"]["input_id"], second["data"]["input_id"])
 
+    async def test_continuous_accepts_multiple_sentences_without_wake_or_rearming(self):
+        await self.hello()
+        for _ in range(2):
+            result = await self.request("listening.start", {"mode": "continuous"})
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["result"]["listening_mode"], "continuous")
+        self.assertEqual(self.mic.started, 1)
+        self.mic.chunks.put("这 是 第 一 句")
+        first = await self.event("input.final")
+        self.mic.chunks.put("这 是 第 二 句")
+        second = await self.event("input.final")
+        self.assertEqual(first["data"]["text"], "这是第一句")
+        self.assertEqual(second["data"]["text"], "这是第二句")
+        self.assertNotEqual(first["data"]["input_id"], second["data"]["input_id"])
+        self.assertEqual((await self.request("service.status"))["result"]["listening"], "continuous")
+        self.assertEqual(self.mic.resets, 0, "Finalizing one sentence must not discard subsequent PCM")
+
+    async def test_continuous_silence_keeps_listening_without_empty_input(self):
+        await self.hello()
+        await self.request("listening.start", {"mode": "continuous"})
+        self.assertFalse(any(e.get("name") in ("input.final", "recognition.timeout") for e in self.events))
+        with self.assertRaises(asyncio.TimeoutError):
+            await asyncio.wait_for(self.ws.recv(), 0.1)
+        self.assertEqual((await self.request("service.status"))["result"]["listening"], "continuous")
+
+    async def test_stop_cancels_unfinished_input_and_fresh_start_drops_old_audio(self):
+        await self.hello()
+        await self.request("listening.start", {"mode": "continuous"})
+        await self.request("speech.interrupt")
+        started = await self.event("recognition.started")
+        stopped = await self.request("listening.stop")
+        self.assertEqual(stopped["result"]["listening"], "disabled")
+        self.assertIsNone(stopped["result"]["listening_mode"])
+        cancelled = await self.event("recognition.cancelled")
+        self.assertEqual(cancelled["data"]["input_id"], started["data"]["input_id"])
+        self.mic.chunks.put("关闭期间的旧音频")
+        await self.request("listening.start", {"mode": "continuous"})
+        self.mic.chunks.put("重新开启后的新句子")
+        result = await self.event("input.final")
+        self.assertEqual(result["data"]["text"], "重新开启后的新句子")
+        self.assertGreater(self.mic.stopped, 0)
+
+    async def test_invalid_listening_mode_does_not_change_live_session(self):
+        await self.hello()
+        await self.request("listening.start", {"mode": "continuous"})
+        for mode in ("", "always", None, 12):
+            result = await self.request("listening.start", {"mode": mode})
+            self.assertEqual(result["error"]["code"], "invalid_params")
+        self.assertEqual((await self.request("service.status"))["result"]["listening_mode"], "continuous")
+        self.assertEqual(self.mic.started, 1)
+
     async def test_queue_urgent_interrupt_and_terminal_events(self):
         await self.hello()
         await self.enqueue("first")
@@ -200,7 +261,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_disconnect_stops_audio_and_does_not_replay_on_reconnect(self):
         await self.hello()
-        await self.request("listening.start")
+        await self.request("listening.start", {"mode": "continuous"})
         await self.enqueue("old")
         await asyncio.wait_for(self.speaker.calls.get(), 2)
         await self.ws.close()
@@ -225,6 +286,7 @@ class CSharpWireTests(unittest.IsolatedAsyncioTestCase):
             nonlocal sessions
             sessions += 1
             session = f"wire-{sessions}"
+            continuous_attempts = 0
             try:
                 async for raw in ws:
                     request = json.loads(raw)
@@ -235,13 +297,20 @@ class CSharpWireTests(unittest.IsolatedAsyncioTestCase):
                                                   "error": {"code": "auth_failed", "message": "test rejection", "retryable": False}}))
                         continue
                     result = {"session_id": session} if method == "session.hello" else {}
+                    if method == "listening.start" and request["params"].get("mode") == "continuous":
+                        continuous_attempts += 1
+                        # First mimic an old server silently ignoring the new mode.
+                        if continuous_attempts > 1:
+                            result = {"listening_mode": "continuous", "listening": "continuous"}
+                    if method == "listening.stop":
+                        result = {"listening": "disabled", "listening_mode": None}
                     await ws.send(json.dumps({"version": 1, "kind": "response", "id": request["id"], "ok": True, "result": result}))
                     if method == "speech.enqueue":
                         for name, data in [("service.error", {"code": "synthesis_failed", "message": "测试播报失败", "retryable": True}),
                                            ("state.changed", {"playback": "idle", "listening": "waiting_wake"})]:
                             await ws.send(json.dumps({"version": 1, "kind": "event", "event_id": name, "session_id": session,
                                                       "seq": 10, "name": name, "data": data}, ensure_ascii=False))
-                    if method == "listening.start":
+                    if method == "listening.start" and request["params"].get("mode") != "continuous":
                         def event(i, text, intent=None, sid=session):
                             return json.dumps({"version": 1, "kind": "event", "event_id": str(i), "session_id": sid,
                                                "seq": i, "name": "input.final", "data": {"input_id": f"same-{i}", "text": text, "intent": intent}}, ensure_ascii=False)

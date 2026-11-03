@@ -13,7 +13,8 @@ for name in ['spire-buddy', 'STS2-Agent', 'CombatSolver']:
     section = modules[f'submodule "{name}"']
     if section['path'] != f'game/{name}' or not section['url'].startswith('https://github.com/'):
         raise SystemExit(f'Invalid submodule mapping: {name}')
-json.loads((root / 'protocol/schemas/message.schema.json').read_text(encoding='utf-8'))
+for path in (root / 'protocol/schemas').glob('*.json'):
+    json.loads(path.read_text(encoding='utf-8'))
 for path in (root / 'protocol/examples').glob('*.json'):
     value = json.loads(path.read_text(encoding='utf-8'))
     assert value['version'] == 1, path

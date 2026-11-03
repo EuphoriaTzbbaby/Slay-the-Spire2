@@ -53,7 +53,9 @@ internal sealed class VoiceClient
         StatusChanged?.Invoke("未开启");
     }
 
-    public Task<bool> StartListeningAsync() => CommandAsync("listening.start", new { });
+    public Task<bool> StartListeningAsync(bool continuous = false) => CommandAsync("listening.start",
+        new { mode = continuous ? "continuous" : "wake" }, continuous ? "continuous" : null);
+    public Task<bool> StopListeningAsync() => CommandAsync("listening.stop", new { });
     public Task<bool> InterruptAsync() => CommandAsync("speech.interrupt", new { });
     public Task<bool> StopSpeechAsync() => CommandAsync("speech.clear", new { include_current = true });
     public Task<bool> SpeakAsync(string text, string groupId) => CommandAsync("speech.enqueue", new
@@ -62,7 +64,7 @@ internal sealed class VoiceClient
     });
     public Task<bool> AckAsync(string inputId, string status) => CommandAsync("input.ack", new { input_id = inputId, status });
 
-    private async Task<bool> CommandAsync(string method, object parameters)
+    private async Task<bool> CommandAsync(string method, object parameters, string? expectedListeningMode = null)
     {
         var connection = current;
         var owner = lifetime;
@@ -74,7 +76,10 @@ internal sealed class VoiceClient
         try
         {
             if (method != "input.ack") connection.LastError = null;
-            await RequestAsync(connection, method, parameters, owner.Token).ConfigureAwait(false);
+            var result = await RequestAsync(connection, method, parameters, owner.Token).ConfigureAwait(false);
+            if (expectedListeningMode != null &&
+                (!result.TryGetProperty("listening_mode", out var mode) || mode.GetString() != expectedListeningMode))
+                throw new IOException("语音服务不支持持续监听，请重启 Python 服务以加载新版代码。");
             return ReferenceEquals(current, connection);
         }
         catch (OperationCanceledException) { return false; }
@@ -114,7 +119,7 @@ internal sealed class VoiceClient
                     if (!ReferenceEquals(lifetime, owner)) return;
                     connection.Ready = true;
                     delay = 1;
-                    StatusChanged?.Invoke("已连接，正在开启收音…");
+                    StatusChanged?.Invoke("语音服务已连接。");
                     Connected?.Invoke(connection.SessionId);
                     heartbeat = HeartbeatAsync(connection, connected.Token);
                     await await Task.WhenAny(receiver, heartbeat).ConfigureAwait(false);
@@ -225,14 +230,15 @@ internal sealed class VoiceClient
                     break;
                 case "recognition.started": connection.LastError = null; InputStarted?.Invoke(connection.SessionId); break;
                 case "speech.started": connection.LastError = null; break;
-                case "recognition.timeout": StatusChanged?.Invoke("没听清，请点「说一句」重试。"); break;
+                case "recognition.timeout": StatusChanged?.Invoke("这句话没听清，持续模式会继续接收下一句。"); break;
                 case "state.changed":
                     var playback = data.TryGetProperty("playback", out var p) ? p.GetString() : "idle";
                     var listening = data.TryGetProperty("listening", out var l) ? l.GetString() : "disabled";
-                    StatusChanged?.Invoke(connection.LastError ?? (playback == "playing" ? "正在播报，点「说一句」可打断。" : listening switch
+                    StatusChanged?.Invoke(connection.LastError ?? (playback == "playing" ? "正在播报。" : listening switch
                     {
+                        "continuous" => "持续监听中，说完一句后可继续说；QQ 关闭。",
                         "listening" => "正在听，请说话…", "recognizing" => "正在识别…",
-                        "waiting_wake" => "等待唤醒「搭子」，也可点「说一句」。", _ => "麦克风未开启。"
+                        "waiting_wake" => "等待唤醒「搭子」。", _ => "麦克风已关闭，QQ 开启语音聊天。"
                     }));
                     break;
                 case "service.error":

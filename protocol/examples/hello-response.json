@@ -8,13 +8,15 @@
     "features": [
       "asr",
       "tts",
-      "push_to_talk"
+      "push_to_talk",
+      "continuous_listening"
     ],
     "service": "ready",
     "listening": "disabled",
     "playback": "idle",
     "queue_length": 0,
     "current_utterance_id": null,
-    "echo_guard": "mute_during_playback"
+    "echo_guard": "mute_during_playback",
+    "listening_mode": null
   }
 }

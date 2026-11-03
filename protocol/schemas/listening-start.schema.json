@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Voice protocol v1 listening.start request",
+  "type": "object",
+  "required": [
+    "version",
+    "kind",
+    "id",
+    "method",
+    "params"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "kind": {
+      "const": "request"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "method": {
+      "const": "listening.start"
+    },
+    "params": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "wake",
+            "continuous"
+          ],
+          "default": "wake"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

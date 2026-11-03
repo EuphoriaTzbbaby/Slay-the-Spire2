@@ -9,7 +9,7 @@
 | 阶段 | 交付结果 | 本期要求 |
 | --- | --- | --- |
 | A0 发声检测 | 麦克风能采集，能观察说话开始/结束、输入电平与无声情况 | 当前第一优先；不要求 ASR 成功，也不要求播放声音 |
-| A1 语音 → 文字 | 中文识别结果经 WebSocket 进入游戏聊天，AI 返回文字 | 输入链路的下一步；先用「说一句」按钮 |
+| A1 语音 → 文字 | 中文识别结果经 WebSocket 进入游戏聊天，AI 返回文字 | 默认 QQ 开启持续模式，再按 QQ 关闭 |
 | A2 唤醒输入 | 默认唤醒词「搭子」，一次唤醒收一句，误触发与超时可控 | 后续增强，不阻塞按钮输入 |
 | B 语音 → 语音 | 游戏把回复交给 TTS，保留文字，支持队列、取消和打断 | 后续阶段，本轮不要求实际出声 |
 
@@ -55,20 +55,20 @@
 }
 ```
 
-握手结果至少含非空 `session_id`、`features` 和服务状态。`features` 只声明实际可用能力；只有输入的服务可声明 `asr`、`push_to_talk`，不必为了接游戏而实现 TTS。当前客户端尚未按能力清单禁用全部播报按钮，因此 A1 验收选择「语音→文字」，不点击「试听」。能力驱动的界面限制归游戏端后续完善。
+握手结果至少含非空 `session_id`、`features` 和服务状态。持续模式声明 `continuous_listening` 能力；输入专用服务不必实现 TTS。当前 QQ 会发送 `listening.start({mode:"continuous"})` 并核验响应 `listening_mode:"continuous"`，旧服务忽略 mode 时不能算成功，游戏会提示重启 Python 并关闭输入。`mode` 缺省仍为 `wake`，兼容旧单句客户端。
 
 当前 C# 单次请求超时为 10 秒，约每 5 秒发送一次心跳。模型加载不能让请求处理、心跳和停止操作长期等待。现有原型在开放端口前加载模型；若语音组改成握手返回 `loading`，须同步游戏端的就绪与恢复流程，不能假定现有客户端会收到 `service.ready` 后自动重试。
 
 ## 4. A1 最小兼容请求
 
-以下是对接当前游戏端需要保留的接口。`speech.interrupt` 虽带 speech 前缀，也用于没有任何播报时的「说一句」按钮，不依赖 TTS。
+以下是对接游戏端的兼容接口。当前 QQ 使用持续模式启停；`speech.interrupt` 保留给旧单句客户端及后续独立打断操作，不依赖 TTS。
 
 | 方法 | 参数 | 语义 |
 | --- | --- | --- |
 | `session.hello` | `token`, `protocol_version:1` | 鉴权，返回会话与能力；失败不得采集 |
 | `service.status` | `{}` | 查询状态，不开启麦克风 |
 | `service.ping` | `{}` | 快速响应心跳，不改变收音状态 |
-| `listening.start` | `{}` | 开启采集并进入 `waiting_wake`；还没有开启一次无唤醒词收音 |
+| `listening.start` | 可选 `mode:wake/continuous`，缺省 wake | continuous 持续接收每句，不要求唤醒词；wake 保留等待唤醒的兼容行为 |
 | `listening.stop` | `{}` | 停止采集、取消未完成识别；不发送残留最终文本 |
 | `speech.interrupt` | 可选 `group_id` | 麦克风已开启时，取消旧播放与排队内容，开始一次收音；麦克风关闭返回 `microphone_disabled` |
 | `recognition.cancel` | `input_id` | 取消指定的一次输入，回到等待状态 |
@@ -82,7 +82,8 @@
 | 字段 | 基本版值/含义 |
 | --- | --- |
 | `service` | `ready`；完整目标另有 `loading/error/stopping`，尚未形成完整就绪流程 |
-| `listening` | `disabled`、`waiting_wake`、`listening`；当前没有独立的实时 VAD/recognizing 状态反馈 |
+| `listening` | `disabled`、`waiting_wake`、`listening`、`continuous`；continuous 表示持续收音，不代表此刻检测到人声 |
+| `listening_mode` | 关闭时为 `null`，开启时为 `wake` 或 `continuous`；开始持续模式的响应必须明确返回 continuous |
 | `playback` | `idle` / `playing`；纯输入服务固定 `idle` |
 | `queue_length` | 非负整数；纯输入服务为 0 |
 | `current_utterance_id` | 播放标识或 `null`；纯输入服务为 `null` |
@@ -94,7 +95,7 @@ A0 的实时电平/人声活动目前没有已接通的游戏事件。可先在�
 
 | 事件 | data | 要求 |
 | --- | --- | --- |
-| `recognition.started` | `input_id` | 按钮/唤醒开启一次输入，ID 一次生成；不是 VAD 阳性事件 |
+| `recognition.started` | `input_id` | 每句一个 ID；持续模式当前在 ASR 最终文本产生时建立，不是实时 VAD 阳性事件 |
 | `input.final` | `input_id`, `text`, `language:"zh-CN"`, `intent` | 本次最终结果，最多一次；普通聊天 `intent:null` |
 | `recognition.timeout` | `input_id`, `reason` | 本次没有有效结果或超过时限，不操作游戏 |
 | `recognition.cancelled` | `input_id`, `reason` | 本次取消，不再发送旧文本 |
@@ -131,28 +132,31 @@ A0 的实时电平/人声活动目前没有已接通的游戏事件。可先在�
 
 `先别暂停`、`暂停以后怎么办`等混合句不按关键词命中，作为普通文本。固定口令与普通文本共用一次 `input.final`，不要另外发送第二条“控制事件”。
 
-每次输入只有一个终态：最终文本、超时、取消或关联错误。游戏端按 **`(session_id,input_id)`** 去重，并丢弃旧会话已排队回调；事件 seq 不能代替输入 ID 去重。
+每句输入只有一个终态：最终文本、超时、取消或关联错误；一个持续监听会话可以包含多句，各句 input_id 不同。静默不会关闭持续模式或生成空输入。游戏端按 **`(session_id,input_id)`** 去重，并丢弃旧会话已排队回调；事件 seq 不能代替输入 ID 去重。
 
 `input.ack.status`：`accepted` 表示已交给聊天或控制处理，`rejected` 表示未接收，`ignored` 表示重复/未知/当前不适用。**accepted 不是 AI 已答完或游戏动作已最终完成。** 原型可能对不适用口令回 ignored；原因字段目前未统一发送。回执丢失不授权重放动作，语音端不应换新 input_id 重发旧句。
 
 断开连接时停止采集/识别/播放、清空旧输入与队列；重连后新握手、查询状态，由游戏端明确恢复。禁止重放断线前的口令和播报。
 
-## 6. 当前按钮/QQ 快捷键输入时序
+## 6. QQ 持续语音聊天时序
 
 ```text
-选择「语音→文字」
-→ session.hello → service.status → listening.start（waiting_wake）
-玩家点「说一句」，或快速连续按两次 Q
-→ speech.interrupt → recognition.started（开始本次收音）
-→ 玩家发声、停顿 → ASR 得到最终文字
-→ input.final(intent=null)
-→ 游戏复用聊天入口 → input.ack(accepted/rejected)
-→ AI 回复文字；不发起自动播报
+游戏启动 → 可连接语音服务，但不自动采集
+QQ /「开始语音」→ 需要时切到语音→文字
+→ session.hello → service.status → listening.start({mode:"continuous"})
+→ 玩家每说完一句 → ASR 最终文字 → 每句唯一的 input.final
+→ 游戏聊天 / 忙时最多排队 4 句 → input.ack(accepted/rejected)
+→ AI 文字回复，继续收音，不回到 waiting_wake
+再次 QQ /「关闭语音」/ 窗口「关闭」
+→ 游戏先关闭输入路由、清掉未提交语音并断开连接
+→ Python 取消识别、停止麦克风、释放音频；不提交残留文本
 ```
 
-A0 先验证发声检测，不要求走完这条 AI 链路。系统扬声器保持静音也应能完成 A0/A1。麦克风权限、输入静音和输出静音分别检查，不能用“没听见 AI”判断玩家输入失败。
+`listening.stop` 也可用于协议级停止并保留连接。当前快速关闭采用断开连接，服务必须完成同样的音频清理。重连只有游戏仍处于开启意图时才明确恢复；关闭后不恢复、不重放旧句。已提交的 AI 问题可继续完成文字回复。
 
-QQ 的检测、打开聊天页和默认切到语音→文字均归游戏端。它与按钮复用同一 `listening.start` → `speech.interrupt` 流程，语音组不需要新增快捷键协议或在 Python 监听系统键盘。仅游戏窗口有焦点且未编辑文本时生效；初次连接的待收音请求 5 秒失效，关闭输入或焦点丢失时不执行过期请求。
+QQ 开关在 C# 实现；文本输入、组合键、长按与失焦不触发。F9 隐藏面板时监听继续，启动按钮显示「听」；窗口「关闭」同时关闭持续输入。游戏重启不恢复持续收音。旧单句 QQ 的 5 秒待请求有效期不再用于持续开关；连接中可随时再次 QQ 关闭。
+
+句末判断复用 ASR 终点结果，未增加真正的实时 VAD 活动事件。持续模式无需唤醒词，也不受旧单句 15 秒静默超时限制。A0 独立发声检测仍单独验收；系统输出静音不影响当前的持续语音→文字。
 
 ## 7. 后续 B 阶段：TTS 与播放
 
@@ -175,7 +179,7 @@ QQ 的检测、打开聊天页和默认切到语音→文字均归游戏端。�
 
 | 范围 | 已有证据 | 尚缺 |
 | --- | --- | --- |
-| 协议/客户端 | 13 项音频无关检查，包括 C#↔Python、中文分片、鉴权失败、去重、断线清理和静音提示 | 不证明真实麦克风、VAD 或识别效果 |
+| 协议/客户端 | 音频无关回归，包括持续多句、静默、停止/重连、旧服务检测、C#↔Python、中文分片、去重和断线清理 | 不证明真实麦克风、VAD 或识别效果 |
 | 本机设备 | 能枚举输入设备；`test-mic` 可打印识别结果或超时采样/峰值 | 实时发声反馈、设备/权限异常的完整验收 |
 | 本地 ASR | 已识别合成 PCM；2026-11-03 用户确认真人转写进入游戏「你」气泡 | 转写质量、实时 VAD 与 Windows 仍待分别实测；AI 回复相关性按聊天修复后复测 |
 | 唤醒 | 仅 ASR 最终文本开头匹配「搭子」 | 专门唤醒检测与误触发评估；样本里「搭子」曾识别为「大致」 |
