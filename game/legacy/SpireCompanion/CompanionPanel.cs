@@ -53,6 +53,7 @@ internal sealed class CompanionPanel
     private Label decisionStatus = null!;
     private string decisionSignature = "";
     private Button toggle = null!;
+    private VoiceHudButton? voiceHud;
     private Button solverStart = null!;
     private Button solverToggle = null!;
     private bool solverAuto;
@@ -206,7 +207,7 @@ internal sealed class CompanionPanel
         voiceCard.AddChild(interactionMode);
         var voiceButtons = new HBoxContainer();
         voiceListen = new Button { Text = "开始语音", TooltipText = "QQ 开启持续语音聊天，再按 QQ 关闭" };
-        voiceListen.Pressed += ToggleVoiceChat;
+        voiceListen.Pressed += () => ToggleVoiceChat();
         voiceStopSpeech = new Button { Text = "停止播报", Disabled = !voiceEnabled };
         voiceStopSpeech.Pressed += () => { if (voiceEnabled) _ = voice.StopSpeechAsync(); };
         voiceTest = new Button { Text = "试听", Disabled = !voiceEnabled };
@@ -252,14 +253,19 @@ internal sealed class CompanionPanel
         LoadPlan();
 
         layer.AddChild(panel);
+        var launchers = new HBoxContainer { Position = new Vector2(16, 16), Theme = panel.Theme, MouseFilter = Control.MouseFilterEnum.Ignore };
+        launchers.AddThemeConstantOverride("separation", 10);
         toggle = new Button
         {
-            Text = "AI 搭子", Icon = UiStyle.SmallAvatar, Position = new Vector2(16, 16),
+            Text = "AI 搭子", Icon = UiStyle.SmallAvatar, SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
             TooltipText = "显示或隐藏窗口（F9）", Theme = panel.Theme
         };
         UiStyle.Size(toggle, 44, 108);
         toggle.Pressed += () => panel.Visible = !panel.Visible;
-        layer.AddChild(toggle);
+        launchers.AddChild(toggle);
+        voiceHud = new VoiceHudButton(panel.Theme, () => ToggleVoiceChat(revealChat: false));
+        launchers.AddChild(voiceHud.Button);
+        layer.AddChild(launchers);
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
         solverToggle.Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关";
         tree.Root.AddChild(layer);
@@ -291,6 +297,7 @@ internal sealed class CompanionPanel
     {
         PollVoiceShortcut(); // Closing wins over voice messages queued for this frame.
         while (mainQueue.TryDequeue(out var update)) update();
+        UpdateVoiceHud();
         if (voiceChatActive && !chat.Busy && voiceInputs.Take(voice.SessionId) is { } queued)
             HandleVoiceText(queued.InputId, queued.Text, fromQueue: true);
         var viewport = tree.Root.GetVisibleRect().Size;
@@ -316,7 +323,8 @@ internal sealed class CompanionPanel
                 $"rect=({panel.Position.X},{panel.Position.Y},{panel.Size.X},{panel.Size.Y}) " +
                 $"tabs={tabs.GetTabCount()} titles={titles} current={tabs.CurrentTab} " +
                 $"scroll=({chatScroll.Size.X},{chatScroll.Size.Y}) page=({page?.Size.X},{page?.Size.Y}) " +
-                $"font_ready={panel.Theme.DefaultFont != null} visible={panel.Visible}");
+                $"font_ready={panel.Theme.DefaultFont != null} visible={panel.Visible} " +
+                $"voice_hud={voiceHud?.Button.GetGlobalRect()} voice_on={voiceChatActive} voice_icon={voiceHud?.Button.Icon != null}");
         }
         autoWait = Math.Max(0, autoWait - delta);
         solverRetry = Math.Max(0, solverRetry - delta);
@@ -757,11 +765,14 @@ internal sealed class CompanionPanel
     private void UpdateVoiceChatButton()
     {
         voiceListen.Text = voiceChatActive ? "关闭语音" : "开始语音";
-        if (toggle != null)
-        {
-            toggle.Text = voiceChatActive ? "AI 搭子 · 听" : "AI 搭子";
-            toggle.TooltipText = voiceChatActive ? "语音聊天持续监听中；QQ 关闭，F9 显示/隐藏窗口" : "显示或隐藏窗口（F9）";
-        }
+        UpdateVoiceHud();
+    }
+
+    private void UpdateVoiceHud()
+    {
+        voiceHud?.SetState(!voiceChatActive ? VoiceHudState.Off
+            : !voice.IsConnected || voiceStartingSession.Length > 0 ? VoiceHudState.Connecting
+            : voice.IsListening ? VoiceHudState.Listening : VoiceHudState.Unavailable);
     }
 
     private void CloseVoiceChat()
@@ -772,12 +783,15 @@ internal sealed class CompanionPanel
     }
 
     /// <summary>QQ and the button toggle sustained capture; no one-shot rearming per sentence.</summary>
-    private void ToggleVoiceChat()
+    private void ToggleVoiceChat(bool revealChat = true)
     {
         if (voiceChatActive) { CloseVoiceChat(); return; }
-        panel.Show();
-        tabs.CurrentTab = 0;
-        chatScroll.ScrollVertical = 0;
+        if (revealChat)
+        {
+            panel.Show();
+            tabs.CurrentTab = 0;
+            chatScroll.ScrollVertical = 0;
+        }
         if (!voiceEnabled)
         {
             interactionMode.Select(1);

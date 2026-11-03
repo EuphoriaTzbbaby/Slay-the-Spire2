@@ -17,6 +17,7 @@ internal sealed class VoiceClient
         public string SessionId = "";
         public string? LastError;
         public bool Ready;
+        public volatile string Listening = "disabled";
         public void Dispose()
         {
             Socket.Abort();
@@ -34,6 +35,7 @@ internal sealed class VoiceClient
     public event Action<string, string, string>? IntentReceived;
     public bool Running => lifetime is { IsCancellationRequested: false };
     public bool IsConnected => current is { Ready: true };
+    public bool IsListening => current is { Ready: true, Listening: "continuous" or "listening" or "recognizing" };
     public string SessionId => current is { Ready: true } connection ? connection.SessionId : "";
 
     public void Start(int port, string token, Func<CancellationToken, Task>? ensureService = null)
@@ -215,7 +217,13 @@ internal sealed class VoiceClient
             {
                 var id = root.GetProperty("id").GetString() ?? "";
                 if (!connection.Pending.TryGetValue(id, out var pending)) return;
-                if (root.GetProperty("ok").GetBoolean()) pending.TrySetResult(root.GetProperty("result").Clone());
+                if (root.GetProperty("ok").GetBoolean())
+                {
+                    var response = root.GetProperty("result");
+                    if (response.TryGetProperty("listening", out var listeningState))
+                        connection.Listening = listeningState.GetString() ?? "disabled";
+                    pending.TrySetResult(response.Clone());
+                }
                 else pending.TrySetException(new IOException(root.GetProperty("error").GetProperty("message").GetString() ?? "语音请求被拒绝。"));
                 return;
             }
@@ -239,6 +247,7 @@ internal sealed class VoiceClient
                 case "state.changed":
                     var playback = data.TryGetProperty("playback", out var p) ? p.GetString() : "idle";
                     var listening = data.TryGetProperty("listening", out var l) ? l.GetString() : "disabled";
+                    connection.Listening = listening ?? "disabled";
                     StatusChanged?.Invoke(connection.LastError ?? (playback == "playing" ? "正在播报。" : listening switch
                     {
                         "continuous" => "持续监听中，说完一句后可继续说；QQ 关闭。",

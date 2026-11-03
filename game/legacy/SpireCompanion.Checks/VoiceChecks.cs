@@ -9,12 +9,15 @@ internal static class VoiceChecks
         var path = Path.Combine(Path.GetTempPath(), "spire-voice-" + Guid.NewGuid() + ".json");
         try
         {
-            File.WriteAllText(path, "{\"VoiceEnabled\":true}");
-            Require(WindowState.Load(path) is { VoiceEnabled: true, VoiceOutputEnabled: false });
-            new WindowState(VoiceEnabled: true, VoiceOutputEnabled: true).Save(path);
-            Require(WindowState.Load(path).VoiceOutputEnabled);
-            Console.WriteLine("PASS Voice modes persist; old voice settings still mean voice-to-text");
-            return 1;
+            File.WriteAllText(path, "{\"AutoEnabled\":true,\"SolverAuto\":true,\"VoiceEnabled\":true,\"VoiceOutputEnabled\":true}");
+            Require(WindowState.Load(path) is { AutoEnabled: true, SolverAuto: true, VoiceEnabled: false, VoiceOutputEnabled: false });
+            Console.WriteLine("PASS Restart ignores legacy enabled voice/output flags and retains game preferences");
+            new WindowState(AutoEnabled: true, VoiceEnabled: true, VoiceOutputEnabled: true).Save(path);
+            using var saved = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            Require(!saved.RootElement.GetProperty("VoiceEnabled").GetBoolean() && !saved.RootElement.GetProperty("VoiceOutputEnabled").GetBoolean());
+            Require(WindowState.Load(path) is { AutoEnabled: true, VoiceEnabled: false, VoiceOutputEnabled: false });
+            Console.WriteLine("PASS New settings never persist an enabled microphone or voice output across launches");
+            return 2;
         }
         finally { File.Delete(path); }
     }
@@ -52,7 +55,9 @@ internal static class VoiceChecks
                 Require(await inputs.WaitAsync(TimeSpan.FromSeconds(5)));
                 Require(!await client.StartListeningAsync(continuous: true)); // old Python response is not success
                 Require(await client.StartListeningAsync(continuous: true));
+                Require(client.IsListening);
                 Require(await client.StopListeningAsync());
+                Require(!client.IsListening);
                 await Task.Delay(100);
                 Require(texts.Count == session + 1 && intents.Count == session + 1);
                 client.Stop();

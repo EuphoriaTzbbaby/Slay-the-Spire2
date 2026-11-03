@@ -4,7 +4,7 @@ namespace SpireCompanion.Core;
 
 /// <summary>
 /// Small window preferences that must survive a restart. Only non-secret UI flags live here;
-/// a broken file falls back to defaults instead of blocking the panel.
+/// a broken file falls back to defaults. Microphone/output flags never survive a restart.
 /// </summary>
 public sealed record WindowState(bool AutoEnabled = false, bool SolverAuto = false, bool VoiceEnabled = false, bool VoiceOutputEnabled = false)
 {
@@ -13,7 +13,8 @@ public sealed record WindowState(bool AutoEnabled = false, bool SolverAuto = fal
         try
         {
             if (!File.Exists(path)) return new();
-            return JsonSerializer.Deserialize<WindowState>(File.ReadAllText(path)) ?? new();
+            return (JsonSerializer.Deserialize<WindowState>(File.ReadAllText(path)) ?? new())
+                with { VoiceEnabled = false, VoiceOutputEnabled = false };
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -27,7 +28,7 @@ public sealed record WindowState(bool AutoEnabled = false, bool SolverAuto = fal
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
             var temporary = path + ".tmp";
-            File.WriteAllText(temporary, JsonSerializer.Serialize(this));
+            File.WriteAllText(temporary, JsonSerializer.Serialize(this with { VoiceEnabled = false, VoiceOutputEnabled = false }));
             File.Move(temporary, path, true);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
