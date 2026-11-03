@@ -81,7 +81,7 @@ internal static class GameReader
             Relics = player.Relics.Select((r, i) => new ItemView(i, r.Id.Entry, Text(r.Title), Shorten(Plain(Text(r.DynamicDescription)), 80))).ToArray(),
             Potions = player.PotionSlots.Select((p, i) => p == null ? null : new ItemView(i, p.Id.Entry, Text(p.Title), Shorten(Plain(Text(p.DynamicDescription)), 80)))
                 .OfType<ItemView>().ToArray(),
-            Room = ReadRoom(run),
+            Room = ReadRoom(run, player),
             Floor = run.TotalFloor,
             Ascension = run.AscensionLevel,
             Enemies = state?.Enemies.Select((e, i) => new EnemyView(i, e.Monster?.Id.Entry ?? "unknown",
@@ -104,7 +104,7 @@ internal static class GameReader
     /// Out-of-combat screens. Event, shop and rest site expose plain model lists, so they can be
     /// read without touching UI text; the card reward and map are the two exceptions noted below.
     /// </summary>
-    private static RoomView? ReadRoom(RunState run)
+    private static RoomView? ReadRoom(RunState run, Player player)
     {
         // The map is an overlay that can be opened from any room, not only from MapRoom.
         if (NMapScreen.Instance is { IsOpen: true }) return MapView(run);
@@ -153,11 +153,25 @@ internal static class GameReader
         {
             var cards = SortedCardHolders(rewardScreen).Select(holder => holder.CardModel).OfType<CardModel>().ToArray();
             if (cards.Length > 0)
-                return new RoomView("Reward", "卡牌奖励", "选择一张加入牌组，或跳过",
-                    cards.Select((card, index) => new RoomOptionView(index.ToString(), Text(card.Title),
+            {
+                // Copy count tells the model (and the duplicate guard) how many of this card are already in the deck.
+                var copies = player.Deck.Cards
+                    .GroupBy(card => Text(card.Title))
+                    .ToDictionary(group => group.Key, group => group.Count());
+                var rewardOptions = cards.Select((card, index) =>
+                {
+                    var title = Text(card.Title);
+                    var owned = copies.TryGetValue(title, out var count) ? count : 0;
+                    return new RoomOptionView(index.ToString(), title,
                         $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                        (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(CardText(card), 100), false)).ToArray())
+                        (card.IsUpgraded ? " · 已升级" : "") +
+                        (owned > 0 ? $" · 牌组已有 {owned} 张" : "") + "：" + Shorten(CardText(card), 100), false);
+                }).ToList();
+                // The skip button is a real, clickable action; without it the model can only ever add a card.
+                if (CanSkipReward()) rewardOptions.Add(new RoomOptionView("skip", "跳过这张奖励", "不加入牌组，继续前进", false));
+                return new RoomView("Reward", "卡牌奖励", "选择一张加入牌组，或跳过", rewardOptions.ToArray())
                     { Id = ScreenId(rewardScreen) };
+            }
         }
         switch (run.CurrentRoom)
         {
