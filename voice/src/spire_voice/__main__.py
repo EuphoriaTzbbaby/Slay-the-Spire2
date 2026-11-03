@@ -53,12 +53,16 @@ async def run(args):
         if status:
             print("系统输出状态：" + str(status))
         return
+    from .lifecycle import watch_parent_pipe
+    parent_closed = watch_parent_pipe(sys.stdin.buffer) if args.managed else asyncio.Event()
     device = args.input_device
     if device is not None and device.isdecimal():
         device = int(device)
     microphone = Microphone(args.model, device, diagnostics=args.test_mic)
     print(f"[voice] 加载本地中文模型：{args.model}", flush=True)
     await asyncio.to_thread(microphone.load)
+    if parent_closed.is_set():
+        return
     if args.test_mic:
         await asyncio.to_thread(microphone.start)
         print("麦克风已打开；请说一句中文，静默结束。最多等待 15 秒，不保存录音。", flush=True)
@@ -79,9 +83,9 @@ async def run(args):
     server = VoiceServer(args.token_file, microphone, SystemSpeech())
     print(f"[voice] 会话文件：{args.token_file}（令牌不打印）", flush=True)
     async with serve(server.handler, "127.0.0.1", args.port, max_size=65536):
-        print(f"[voice] 已就绪 ws://127.0.0.1:{args.port}；游戏开启语音后才采集。Ctrl+C 退出。", flush=True)
+        print(f"[voice] 已就绪 ws://127.0.0.1:{args.port}；游戏开启语音后才采集。", flush=True)
         try:
-            await asyncio.Future()
+            await parent_closed.wait()
         finally:
             if server.owner:
                 await server.owner.close()
@@ -93,6 +97,7 @@ def main():
     parser.add_argument("--token-file", type=Path, default=default_token_file())
     parser.add_argument("--model", type=Path, default=DEFAULT_MODEL)
     parser.add_argument("--input-device", help="设备编号或名称；默认使用系统输入")
+    parser.add_argument("--managed", action="store_true", help="由游戏管理：父进程标准输入关闭后退出")
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--download-model", action="store_true")
     actions.add_argument("--list-devices", action="store_true")

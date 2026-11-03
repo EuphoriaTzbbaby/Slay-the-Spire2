@@ -1,6 +1,7 @@
 """Build the Windows zip and publish it as the rolling `latest` GitHub release."""
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -45,7 +46,13 @@ def call(url: str, auth: str, method: str = "GET", body: dict | None = None) -> 
 
 
 def main() -> int:
-    subprocess.run([sys.executable, str(ROOT / "scripts/package_release.py")], check=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--voice-runtime', type=Path, help='Windows voice runtime directory to include in the release')
+    args = parser.parse_args()
+    package = [sys.executable, str(ROOT / "scripts/package_release.py")]
+    if args.voice_runtime:
+        package += ['--voice-runtime', str(args.voice_runtime)]
+    subprocess.run(package, check=True)
     if not ZIP.is_file():
         raise SystemExit(f"Missing {ZIP}")
     auth = token()

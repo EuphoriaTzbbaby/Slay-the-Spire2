@@ -61,3 +61,6 @@ if (-not $solver) {
 if ($solver -and $ritsu) { Write-Host "依赖检查通过：CombatSolver + RitsuLib 已在 mods 目录。" -ForegroundColor Green }
 Write-Host ""
 Write-Host "下一步：启动游戏，确认 Mod 列表里 尖塔 AI 陪玩（开发版）已启用，进游戏按 F9。" -ForegroundColor Cyan
+if (Test-Path (Join-Path $target "voice\spire-voice.exe")) {
+    Write-Host "语音聊天：QQ 开启持续监听，再次 QQ 关闭；无需打开终端或安装 Python。首次使用请允许麦克风权限。" -ForegroundColor Cyan
+}

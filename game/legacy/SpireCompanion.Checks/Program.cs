@@ -1,5 +1,11 @@
 using SpireCompanion.Core;
 
+if (args.Length > 0 && args[0] is "--voice-host-fixture" or "--voice-host-wait-fixture")
+{
+    await VoiceServiceHostChecks.FixtureAsync(args);
+    return;
+}
+
 if (args is ["--voice-client-check", var voicePort, var voiceToken])
 {
     await VoiceChecks.WireAsync(int.Parse(voicePort), voiceToken);
@@ -112,6 +118,7 @@ passed += await ConversationFocusChecks.RunAsync();
 passed += VaultChecks.Run();
 passed += VoiceChecks.Preferences();
 passed += VoiceChecks.PendingInputs();
+passed += await VoiceServiceHostChecks.RunAsync();
 passed += ShortcutChecks.Run();
 Console.WriteLine($"{passed} checks passed. No game process or saves accessed.");
 

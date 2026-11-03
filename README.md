@@ -42,7 +42,7 @@ git submodule update --init --recursive
 
 已有三个上游项目；正式 C# 工程位于 game/legacy/，具备状态快照、模型聊天、局外自动操作及 CombatSolver 桥接。策略优化由另外两位同学推进，游戏负责人集中处理集成、交互、发布与语音联调。具体游戏实测进度见下方进度文档。
 
-语音基本调试版已加入三种交流模式：**文字→文字、语音→文字、语音→语音（保留文字）**。Python 服务使用本地中文识别与系统 TTS，游戏端复用同一聊天链路。准备和启动：`python3 scripts/voice_dev.py setup`、`python3 scripts/voice_dev.py run`；QQ 开启持续语音，再按 QQ 关闭；每句停顿后自动接收下一句。真实人声、游戏完整闭环、Windows 音频及播报期间唤醒仍待验收，详见 [voice/README.md](voice/README.md)。多人适配仍属后续工作。
+语音基本调试版已加入三种交流模式：**文字→文字、语音→文字、语音→语音（保留文字）**，当前 AI 默认文字回复。QQ 会在后台按需启动语音服务并持续监听，再按 QQ 关闭收音；每句停顿后自动接收下一句，日常不需要终端。开发机首次 `python3 scripts/voice_dev.py setup` 后重新安装 Mod，自动配置本机入口；面向玩家的包须附带同平台语音运行时及模型，Windows 包通过 `package_release.py --voice-runtime` 纳入。现有纯文字包不具备独立语音组件。Windows 音频与完整玩家安装包仍待实机验收，详见 [voice/README.md](voice/README.md)。多人适配仍属后续工作。
 
 当前语音工作只优先验收**玩家发声检测 → 中文转文字 → AI 文字回复**，TTS 不阻塞输入。语音组需交付的工作、接口兼容与验收边界见[语音组对接清单](docs/语音模块-接口与参数分析.md)。
 

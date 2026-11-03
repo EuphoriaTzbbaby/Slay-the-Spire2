@@ -33,6 +33,8 @@
 
 语音模块交付优先 Windows，同时维护跨平台协议；游戏负责人在 macOS 联调。开发交付先提供源码、依赖、模型获取方式与启动说明，面向玩家的免 Python 安装包另阶段验收。
 
+玩家操作由 QQ 统一控制，不要求启动终端：游戏按需启动语音服务，关闭聊天停止收音并保留模型，退出游戏回收自启进程。开发安装由 `voice-launch.json` 连接本机环境；正式交付提供独立 `spire-voice.exe`、依赖与模型目录，打包器通过 `--voice-runtime` 纳入。此启动方式不改变 WebSocket 协议；`--managed` 表示服务须在游戏持有的标准输入管道 EOF 时清理并退出，不能在未鉴权、未收到 `listening.start` 时自动收音。自有进程崩溃最多启动 3 次；外部手动服务仅复用，不结束。
+
 ## 3. 连接与消息信封
 
 - Python 是 WebSocket 服务端，绑定 `127.0.0.1:17860`；C# Mod 是客户端。修改端口必须同步两端，当前游戏端固定使用 17860。
@@ -55,7 +57,7 @@
 }
 ```
 
-握手结果至少含非空 `session_id`、`features` 和服务状态。持续模式声明 `continuous_listening` 能力；输入专用服务不必实现 TTS。当前 QQ 会发送 `listening.start({mode:"continuous"})` 并核验响应 `listening_mode:"continuous"`，旧服务忽略 mode 时不能算成功，游戏会提示重启 Python 并关闭输入。`mode` 缺省仍为 `wake`，兼容旧单句客户端。
+握手结果至少含非空 `session_id`、`features` 和服务状态。持续模式声明 `continuous_listening` 能力；输入专用服务不必实现 TTS。当前 QQ 会发送 `listening.start({mode:"continuous"})` 并核验响应 `listening_mode:"continuous"`，旧服务忽略 mode 时不能算成功，游戏会提示更新语音组件并关闭输入。`mode` 缺省仍为 `wake`，兼容旧单句客户端。
 
 当前 C# 单次请求超时为 10 秒，约每 5 秒发送一次心跳。模型加载不能让请求处理、心跳和停止操作长期等待。现有原型在开放端口前加载模型；若语音组改成握手返回 `loading`，须同步游戏端的就绪与恢复流程，不能假定现有客户端会收到 `service.ready` 后自动重试。
 

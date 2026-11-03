@@ -36,12 +36,12 @@ internal sealed class VoiceClient
     public bool IsConnected => current is { Ready: true };
     public string SessionId => current is { Ready: true } connection ? connection.SessionId : "";
 
-    public void Start(int port, string token)
+    public void Start(int port, string token, Func<CancellationToken, Task>? ensureService = null)
     {
         Stop();
         var owner = new CancellationTokenSource();
         lifetime = owner;
-        _ = Task.Run(() => LoopAsync(port, token, owner));
+        _ = Task.Run(() => LoopAsync(port, token, owner, ensureService));
     }
 
     public void Stop()
@@ -79,7 +79,7 @@ internal sealed class VoiceClient
             var result = await RequestAsync(connection, method, parameters, owner.Token).ConfigureAwait(false);
             if (expectedListeningMode != null &&
                 (!result.TryGetProperty("listening_mode", out var mode) || mode.GetString() != expectedListeningMode))
-                throw new IOException("语音服务不支持持续监听，请重启 Python 服务以加载新版代码。");
+                throw new IOException("语音组件版本过旧，不支持持续监听；请更新语音组件后重新开启。");
             return ReferenceEquals(current, connection);
         }
         catch (OperationCanceledException) { return false; }
@@ -94,7 +94,7 @@ internal sealed class VoiceClient
         }
     }
 
-    private async Task LoopAsync(int port, string token, CancellationTokenSource owner)
+    private async Task LoopAsync(int port, string token, CancellationTokenSource owner, Func<CancellationToken, Task>? ensureService)
     {
         var delay = 1;
         try
@@ -109,6 +109,11 @@ internal sealed class VoiceClient
                 {
                     if (!ReferenceEquals(lifetime, owner)) return;
                     current = connection;
+                    if (ensureService != null)
+                    {
+                        StatusChanged?.Invoke("正在准备语音组件，首次开启需要加载模型；QQ 可关闭。");
+                        await ensureService(connected.Token).ConfigureAwait(false);
+                    }
                     StatusChanged?.Invoke("正在连接本地服务…");
                     await connection.Socket.ConnectAsync(new Uri($"ws://127.0.0.1:{port}"), connected.Token).ConfigureAwait(false);
                     receiver = ReceiveAsync(connection, connected.Token);

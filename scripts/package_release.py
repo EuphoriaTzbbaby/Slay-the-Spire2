@@ -1,6 +1,7 @@
 """Build the mod and produce a one-click Windows zip (mod + installer + readme)."""
 from __future__ import annotations
 
+import argparse
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,13 @@ MOD_FILES = ("SpireCompanion.dll", "SpireCompanion.json", "LICENSE")
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--voice-runtime', type=Path,
+                        help='Windows voice runtime directory containing spire-voice.exe, dependencies and models/')
+    args = parser.parse_args()
+    if args.voice_runtime and not all((args.voice_runtime / name).is_file() for name in
+                                      ['spire-voice.exe', 'models/vosk-model-small-cn-0.22/am/final.mdl']):
+        parser.error('Voice runtime must include spire-voice.exe and the Chinese model; a source checkout is not a runtime.')
     subprocess.run([sys.executable, str(ROOT / "scripts/game_dev.py"), "build"], check=True)
     built = ROOT / "game/legacy/SpireCompanion/bin/Release/net9.0"
     if STAGING.exists():
@@ -28,6 +36,8 @@ def main() -> int:
             print(f"缺少文件: {name}")
             return 1
         shutil.copy2(source, mod_dir / name)
+    if args.voice_runtime:
+        shutil.copytree(args.voice_runtime, mod_dir / 'voice')
     shutil.copy2(ROOT / "scripts/install_windows.bat", STAGING / "install.bat")
     shutil.copy2(ROOT / "scripts/install_windows.ps1", STAGING / "install.ps1")
     shutil.copy2(ROOT / "scripts/update_windows.bat", STAGING / "update.bat")
@@ -37,7 +47,9 @@ def main() -> int:
         "2. 双击 install.bat；\n"
         "3. 按提示确认游戏目录；\n"
         "4. 自动战斗必须另外安装 CombatSolver 与 RitsuLib（创意工坊订阅）；\n"
-        "5. 启动游戏，确认 Mod 已启用，进游戏按 F9。\n\n"
+        "5. 启动游戏，确认 Mod 已启用，进游戏按 F9。\n"
+        + ("6. QQ 开启持续语音聊天，再次 QQ 关闭；无需安装 Python 或打开终端。首次使用需允许麦克风权限。\n\n"
+           if args.voice_runtime else "6. 本安装包仅提供文字聊天；语音请使用包含语音组件的安装包。\n\n") +
         "以后更新：重新下载同一个 zip，退出游戏后再次双击 install.bat。\n",
         encoding="utf-8",
     )

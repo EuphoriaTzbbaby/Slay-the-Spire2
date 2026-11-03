@@ -65,6 +65,9 @@ internal sealed class CompanionPanel
     private Button voiceTest = null!;
     private Label voiceStatus = null!;
     private readonly VoiceClient voice = new();
+    private readonly VoiceServiceHost voiceService = new(() => VoiceLaunchPlan.Discover(
+        Path.GetDirectoryName(typeof(CompanionPanel).Assembly.Location) is { Length: > 0 } directory
+            ? directory : Path.Combine(AppContext.BaseDirectory, "mods", "SpireCompanion")));
     private readonly DoubleTapShortcut voiceShortcut = new();
     private bool voiceChatActive;
     private readonly VoiceInputQueue voiceInputs = new();
@@ -239,7 +242,7 @@ internal sealed class CompanionPanel
             if (voiceEnabled && voice.IsConnected) _ = voice.StopSpeechAsync();
             SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
         };
-        chat.ReplyReady += text => { if (voiceEnabled && voiceOutputEnabled) _ = voice.SpeakAsync(text, voiceGroup); };
+        chat.ReplyReady += text => { if (voiceChatActive && voiceEnabled && voiceOutputEnabled) _ = voice.SpeakAsync(text, voiceGroup); };
         chat.UserSaid += NoteDirective;
         planLabel = new Label { Text = "本局计划：未设置", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         planLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
@@ -260,13 +263,13 @@ internal sealed class CompanionPanel
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
         solverToggle.Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关";
         tree.Root.AddChild(layer);
-        if (voiceEnabled) StartVoice();
         tree.ProcessFrame += () => Tick(tree.Root.GetProcessDeltaTime());
         tree.Root.TreeExiting += () =>
         {
             autoCts?.Cancel();
             voiceEnabled = false;
             voice.Stop();
+            voiceService.Dispose();
             chat.Dispose();
             try { SolverBridge.StopOwned(); }
             catch (Exception error) { GD.PushError($"[SpireCompanion] shutdown_stop: {error}"); }
@@ -704,7 +707,7 @@ internal sealed class CompanionPanel
             voice.Stop();
             voiceStatus.Text = "语音聊天已关闭，QQ 开启。";
         }
-        else if (!wasEnabled) StartVoice();
+        else if (!wasEnabled && voiceChatActive) StartVoice();
         else if (voice.IsConnected) _ = voice.StopSpeechAsync();
         UpdateVoiceChatButton();
     }
@@ -720,8 +723,9 @@ internal sealed class CompanionPanel
             var sessionPath = Path.Combine(directory, "voice-session.json");
             File.WriteAllText(sessionPath, System.Text.Json.JsonSerializer.Serialize(new { port = 17860, token, url = "ws://127.0.0.1:17860" }));
             if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(sessionPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
-            voice.Start(17860, token);
-            message = "语音服务连接已开启，QQ 可开始或关闭持续语音聊天。";
+            voiceService.BeginSession();
+            voice.Start(17860, token, cancel => voiceService.EnsureRunningAsync(17860, sessionPath, cancel));
+            message = "正在准备语音聊天，QQ 可随时关闭。";
             GD.Print($"[SpireCompanion] voice_start path={sessionPath}");
         }
         catch (Exception error)
@@ -781,6 +785,8 @@ internal sealed class CompanionPanel
         }
         if (!voiceEnabled) return;
         voiceChatActive = true;
+        if (!voice.Running) StartVoice();
+        if (!voiceChatActive) return;
         UpdateVoiceChatButton();
         if (voice.IsConnected) PrepareVoiceInput(voice.SessionId);
         else voiceStatus.Text = "语音聊天：正在连接，QQ 可随时关闭。";

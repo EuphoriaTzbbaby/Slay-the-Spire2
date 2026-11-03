@@ -19,4 +19,6 @@
 
 当前没有已接好的实时电平/VAD 事件，`recognition.started` 仅表示收音会话开始。新增人声活动、部分识别等事件时同步语音实现、游戏显示与方法/事件 Schema；不能只修改本说明就宣称已有该能力。
 
-持续模式的 `listening=continuous` 表示会话保持采集，逐句发送不同 input_id，不代表实时 VAD 阳性。默认 mode=wake 保留旧行为。新增 `schemas/listening-start.schema.json` 描述 mode 参数；持续开始、状态与停止示例在 examples/。游戏和 Python 均需更新重启，旧服务不能静默降级成等待唤醒。
+持续模式的 `listening=continuous` 表示会话保持采集，逐句发送不同 input_id，不代表实时 VAD 阳性。默认 mode=wake 保留旧行为。新增 `schemas/listening-start.schema.json` 描述 mode 参数；持续开始、状态与停止示例在 examples/。旧服务不能静默降级成等待唤醒。
+
+进程由游戏按需启动，日常 QQ 操作不要求玩家开终端。托管启动参数 `--port`、`--token-file`、`--model`、`--managed` 属于进程入口，不是 WebSocket 请求。`--managed` 服务在父进程的私有标准输入管道 EOF 后停止音频并退出；QQ 关闭仅断开会话、释放麦克风，后台模型可保持就绪，更新后重启游戏会回收并加载新的自启服务。正式玩家包须另附同平台可执行文件、依赖和模型。

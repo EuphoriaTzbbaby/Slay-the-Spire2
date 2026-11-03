@@ -27,6 +27,8 @@ internal static class VoiceChecks
         using var ready = new SemaphoreSlim(0);
         using var inputs = new SemaphoreSlim(0);
         using var errors = new SemaphoreSlim(0);
+        int preparations = 0;
+        Task Prepare(CancellationToken cancel) { cancel.ThrowIfCancellationRequested(); Interlocked.Increment(ref preparations); return Task.CompletedTask; }
         client.Connected += _ => ready.Release();
         client.TextReceived += (session, id, text) => { texts.Enqueue(text); inputs.Release(); _ = client.AckAsync(id, "accepted"); };
         client.IntentReceived += (session, id, intent) => { intents.Enqueue(intent); inputs.Release(); _ = client.AckAsync(id, "accepted"); };
@@ -34,9 +36,9 @@ internal static class VoiceChecks
         try
         {
             // Rapid restart must not let the old background loop stop the new connection.
-            client.Start(port, token);
+            client.Start(port, token, Prepare);
             client.Stop();
-            client.Start(port, token);
+            client.Start(port, token, Prepare);
             for (int session = 0; session < 2; session++)
             {
                 Require(await ready.WaitAsync(TimeSpan.FromSeconds(10)));
@@ -55,8 +57,9 @@ internal static class VoiceChecks
                 Require(texts.Count == session + 1 && intents.Count == session + 1);
                 client.Stop();
                 Require(!client.Running && !client.IsConnected && !await client.SpeakAsync("不能重放", "stopped"));
-                if (session == 0) client.Start(port, token);
+                if (session == 0) client.Start(port, token, Prepare);
             }
+            Require(preparations >= 2);
             Require(texts.All(text => text == "这手牌怎么打？") && intents.All(intent => intent == "pause"));
             Console.WriteLine("PASS C# ↔ Python: handshake, UTF-8 fragments, input deduplication, session isolation, TTS, interrupt and restart");
         }

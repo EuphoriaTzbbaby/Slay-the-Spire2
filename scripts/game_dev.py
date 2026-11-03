@@ -1,6 +1,7 @@
 """Build, check, install and optionally launch the first-party game mod. Never edits saves."""
 from pathlib import Path
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -50,6 +51,19 @@ def install(mods):
         finally:
             if os.path.exists(temporary):
                 os.unlink(temporary)
+    # Local development wiring stays on this machine, never in the release zip or Git.
+    python = ROOT / 'voice/.venv' / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python')
+    script = ROOT / 'voice/voice_service.py'
+    model = ROOT / 'voice/models/vosk-model-small-cn-0.22'
+    if python.is_file() and script.is_file() and (model / 'am/final.mdl').is_file():
+        config = destination / 'voice-launch.json'
+        temporary = config.with_suffix('.json.tmp')
+        temporary.write_text(json.dumps({'Python': str(python), 'Script': str(script), 'Model': str(model)},
+                                        ensure_ascii=False), encoding='utf-8')
+        os.replace(temporary, config)
+        print('Local voice launch configured: QQ starts the service without a terminal.')
+    elif not (destination / 'voice').is_dir():
+        print('Voice runtime is not installed; text chat remains available. Developers: voice_dev.py setup, then reinstall.')
     # Only retire the obsolete dependency owned by this Mod, after backing up the old install.
     obsolete = destination / 'SpireCompanion.Core.dll'
     if obsolete.is_file():
