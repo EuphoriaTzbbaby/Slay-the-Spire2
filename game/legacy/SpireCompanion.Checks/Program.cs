@@ -108,6 +108,7 @@ Check("Snapshot fingerprint excludes itself and detects combat changes", () => {
     Require(state.Fingerprint!=(state with {Enemies=[new EnemyView(0,"enemy","敌人",10,20,0)]}).Fingerprint);
 });
 passed += ChatChecks.RunAsync().GetAwaiter().GetResult();
+passed += await ConversationFocusChecks.RunAsync();
 passed += VaultChecks.Run();
 passed += VoiceChecks.Preferences();
 Console.WriteLine($"{passed} checks passed. No game process or saves accessed.");

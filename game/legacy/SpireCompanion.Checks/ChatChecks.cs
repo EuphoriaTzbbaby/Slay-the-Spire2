@@ -24,7 +24,8 @@ internal static class ChatChecks
                 using var json = JsonDocument.Parse(text);
                 Require(json.RootElement.GetProperty("model").GetString() == "test-model");
                 var messages = json.RootElement.GetProperty("messages");
-                var user = JsonDocument.Parse(messages[messages.GetArrayLength()-1].GetProperty("content").GetString()!);
+                Require(messages[messages.GetArrayLength()-1].GetProperty("content").GetString() == "怎么打");
+                using var user = JsonDocument.Parse(messages[messages.GetArrayLength()-2].GetProperty("content").GetString()!);
                 Require(user.RootElement.GetProperty("snapshot").GetProperty("state").GetProperty("Hp").GetInt32() == 60);
                 Require(user.RootElement.GetProperty("snapshot").GetProperty("fingerprint").GetString() == snapshot.Fingerprint);
                 return Reply();
@@ -38,9 +39,10 @@ internal static class ChatChecks
                 var body = await request.Content!.ReadAsStringAsync(token);
                 using var json = JsonDocument.Parse(body);
                 var messages = json.RootElement.GetProperty("messages");
-                using var context = JsonDocument.Parse(messages[messages.GetArrayLength()-1].GetProperty("content").GetString()!);
+                using var context = JsonDocument.Parse(messages[messages.GetArrayLength()-2].GetProperty("content").GetString()!);
                 Require(context.RootElement.GetProperty("snapshot").GetProperty("state").GetProperty("Scene").GetString() == "连接测试");
-                Require(messages.GetArrayLength() == 2);
+                Require(messages.GetArrayLength() == 3);
+                Require(messages[messages.GetArrayLength()-1].GetProperty("content").GetString() == "这是连接测试。请仅回复：连接成功。");
                 return Reply();
             }));
             Require(!string.IsNullOrWhiteSpace(await client.TestAsync(settings, "", default)));
@@ -241,7 +243,9 @@ internal static class ChatChecks
                 var body = await request.Content!.ReadAsStringAsync(token);
                 if (requests == 1)
                 {
-                    Require(body.Contains("\"tool_choice\"") && body.Contains("query_state"));
+                    using var initial = JsonDocument.Parse(body);
+                    Require(initial.RootElement.GetProperty("tool_choice").GetString() == "auto");
+                    Require(body.Contains("query_state"));
                 }
                 if (requests == 1)
                 {
