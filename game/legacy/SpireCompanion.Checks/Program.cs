@@ -111,6 +111,7 @@ passed += ChatChecks.RunAsync().GetAwaiter().GetResult();
 passed += await ConversationFocusChecks.RunAsync();
 passed += VaultChecks.Run();
 passed += VoiceChecks.Preferences();
+passed += ShortcutChecks.Run();
 Console.WriteLine($"{passed} checks passed. No game process or saves accessed.");
 
 public static class UnsupportedSolver { }

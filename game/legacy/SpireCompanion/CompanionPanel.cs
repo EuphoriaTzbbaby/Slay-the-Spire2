@@ -65,6 +65,10 @@ internal sealed class CompanionPanel
     private Button voiceTest = null!;
     private Label voiceStatus = null!;
     private readonly VoiceClient voice = new();
+    private readonly DoubleTapShortcut voiceShortcut = new();
+    private bool voiceInputPending;
+    private double voiceInputExpires;
+    private string voiceStartingSession = "";
     private string voiceGroup = Guid.NewGuid().ToString("N");
     private readonly RunPlan plan = new();
     private Label planLabel = null!;
@@ -197,8 +201,8 @@ internal sealed class CompanionPanel
         UiStyle.Size(interactionMode, 42);
         voiceCard.AddChild(interactionMode);
         var voiceButtons = new HBoxContainer();
-        voiceListen = new Button { Text = "说一句", Disabled = !voiceEnabled };
-        voiceListen.Pressed += () => { if (voiceEnabled) _ = voice.InterruptAsync(); };
+        voiceListen = new Button { Text = "说一句", Disabled = !voiceEnabled, TooltipText = "连续按两次 Q 也可开始语音对话" };
+        voiceListen.Pressed += BeginVoiceInput;
         voiceStopSpeech = new Button { Text = "停止播报", Disabled = !voiceEnabled };
         voiceStopSpeech.Pressed += () => { if (voiceEnabled) _ = voice.StopSpeechAsync(); };
         voiceTest = new Button { Text = "试听", Disabled = !voiceEnabled };
@@ -210,9 +214,9 @@ internal sealed class CompanionPanel
         voiceStatus = new Label { Text = voiceEnabled ? "语音：等待连接" : "语音：未开启", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         voiceStatus.AddThemeColorOverride("font_color", UiStyle.Muted);
         voiceCard.AddChild(voiceStatus);
-        voiceCard.AddChild(UiStyle.Hint("点「说一句」后说话，也可尝试唤醒词「搭子」。播报时点「说一句」会停播并收音。三种模式都可以打字。"));
+        voiceCard.AddChild(UiStyle.Hint("点「说一句」或快速按两次 Q 开始说话；QQ 会打开聊天页，文字模式会切到语音→文字。输入框内打字不触发。"));
         voice.StatusChanged += value => mainQueue.Enqueue(() => { if (voiceEnabled) voiceStatus.Text = "语音：" + value; });
-        voice.Connected += session => QueueVoice(session, () => { _ = voice.StartListeningAsync(); });
+        voice.Connected += session => QueueVoice(session, () => PrepareVoiceInput(session));
         voice.InputStarted += session => QueueVoice(session, () =>
         {
             if (!voiceEnabled) return;
@@ -277,6 +281,7 @@ internal sealed class CompanionPanel
 
     private void Tick(double delta)
     {
+        if (!tree.Root.HasFocus()) voiceInputPending = false;
         while (mainQueue.TryDequeue(out var update)) update();
         var viewport = tree.Root.GetVisibleRect().Size;
         var width = Math.Clamp(viewport.X - 40, 360, 620);
@@ -326,12 +331,23 @@ internal sealed class CompanionPanel
         if (pressed && !f9Down) panel.Visible = !panel.Visible;
         f9Down = pressed;
         var focus = panel.GetViewport()?.GuiGetFocusOwner();
+        var now = Time.GetTicksMsec() / 1000.0;
+        bool editingText = focus is (LineEdit or TextEdit) && focus.IsVisibleInTree();
+        bool voiceShortcutAllowed = tree.Root.HasFocus() && !editingText &&
+            !Input.IsKeyPressed(Key.Ctrl) && !Input.IsKeyPressed(Key.Meta) &&
+            !Input.IsKeyPressed(Key.Alt) && !Input.IsKeyPressed(Key.Shift);
+        if (voiceShortcut.Update(Input.IsPhysicalKeyPressed(Key.Q), now, voiceShortcutAllowed))
+            BeginVoiceInput();
+        if (voiceInputPending && now > voiceInputExpires)
+        {
+            voiceInputPending = false;
+            voiceStatus.Text = "语音：服务尚未就绪，请启动语音服务后再按 QQ。";
+        }
         if (focus is not (LineEdit or TextEdit))
         {
             bool wPressed = Input.IsPhysicalKeyPressed(Key.W);
             if (wPressed && !wDown)
             {
-                var now = Time.GetTicksMsec() / 1000.0;
                 if (now - lastWTap < 0.45) { lastWTap = -10; HotkeyToggleAuto(); }
                 else lastWTap = now;
             }
@@ -679,19 +695,21 @@ internal sealed class CompanionPanel
 
     private void SetInteractionMode(long index)
     {
+        voiceInputPending = false;
         var wasEnabled = voiceEnabled;
         voiceEnabled = index > 0;
         voiceOutputEnabled = index == 2;
         voiceListen.Disabled = voiceStopSpeech.Disabled = voiceTest.Disabled = !voiceEnabled;
         new WindowState(autoEnabled, solverAuto, voiceEnabled, voiceOutputEnabled).Save(windowStatePath);
         if (!voiceEnabled)
-        { voice.Stop(); voiceStatus.Text = "语音：未开启"; }
+        { voiceStartingSession = ""; voice.Stop(); voiceStatus.Text = "语音：未开启"; }
         else if (!wasEnabled) StartVoice();
         else if (voice.IsConnected) _ = voice.StopSpeechAsync();
     }
 
     private void StartVoice()
     {
+        voiceStartingSession = "";
         try
         {
             var directory = ProjectSettings.GlobalizePath("user://spire-companion");
@@ -715,6 +733,57 @@ internal sealed class CompanionPanel
             GD.PushError($"[SpireCompanion] voice_start: {error}");
         }
         if (decisionStatus != null) decisionStatus.Text = message;
+    }
+
+    /// <summary>The button and QQ share one path; enabling voice defaults to text replies.</summary>
+    private void BeginVoiceInput()
+    {
+        panel.Show();
+        tabs.CurrentTab = 0;
+        chatScroll.ScrollVertical = 0;
+        if (!voiceEnabled)
+        {
+            interactionMode.Select(1);
+            SetInteractionMode(1);
+        }
+        if (!voiceEnabled) return;
+        voiceInputPending = true;
+        voiceInputExpires = Time.GetTicksMsec() / 1000.0 + 5;
+        if (voice.IsConnected)
+        {
+            PrepareVoiceInput(voice.SessionId);
+        }
+        else voiceStatus.Text = "语音：正在连接，连接后开始收音…";
+    }
+
+    private void PrepareVoiceInput(string session)
+    {
+        if (voiceStartingSession == session) return;
+        voiceStartingSession = session;
+        _ = PrepareVoiceInputAsync(session);
+    }
+
+    private async Task PrepareVoiceInputAsync(string session)
+    {
+        var started = await voice.StartListeningAsync().ConfigureAwait(false);
+        QueueVoice(session, () =>
+        {
+            voiceStartingSession = "";
+            if (!started) { voiceInputPending = false; return; }
+            TryBeginVoiceInput();
+        });
+    }
+
+    private void TryBeginVoiceInput()
+    {
+        if (!voiceInputPending) return;
+        voiceInputPending = false;
+        // A late/reconnected service must not replay a stale shortcut or capture after focus loss.
+        if (Time.GetTicksMsec() / 1000.0 > voiceInputExpires)
+        { voiceStatus.Text = "语音：连接耗时较长，请再按 QQ 开始说话。"; return; }
+        if (!tree.Root.HasFocus()) return;
+        _ = voice.InterruptAsync();
+        GD.Print("[SpireCompanion] voice_capture_requested");
     }
 
     private void HandleVoiceText(string inputId, string text)
