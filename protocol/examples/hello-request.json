@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "request",
+  "id": "req-hello-001",
+  "method": "session.hello",
+  "params": {
+    "token": "example-not-a-real-token",
+    "protocol_version": 1
+  }
+}

@@ -1,145 +1,246 @@
+using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 
 namespace SpireCompanion;
 
-/// <summary>
-/// Minimal local WebSocket client for the voice module. Runs on a background task and
-/// raises plain callbacks; the panel marshals them to the Godot main thread.
-/// </summary>
+/// <summary>Loopback protocol v1 client. Audio and callbacks never run on the game thread.</summary>
 internal sealed class VoiceClient
 {
-    private readonly SemaphoreSlim sendLock = new(1, 1);
-    private CancellationTokenSource? cts;
-    private ClientWebSocket? socket;
+    private sealed class Connection : IDisposable
+    {
+        public readonly ClientWebSocket Socket = new();
+        public readonly SemaphoreSlim SendLock = new(1, 1);
+        public readonly ConcurrentDictionary<string, TaskCompletionSource<JsonElement>> Pending = new();
+        public readonly HashSet<string> Inputs = [];
+        public string SessionId = "";
+        public string? LastError;
+        public bool Ready;
+        public void Dispose()
+        {
+            Socket.Abort();
+            foreach (var pending in Pending.Values) pending.TrySetCanceled();
+            Socket.Dispose();
+        }
+    }
 
+    private CancellationTokenSource? lifetime;
+    private Connection? current;
     public event Action<string>? StatusChanged;
-    public event Action<string, string>? TextReceived;
-    public event Action<string, string>? IntentReceived;
-
-    public bool Running { get; private set; }
+    public event Action<string>? Connected;
+    public event Action<string>? InputStarted;
+    public event Action<string, string, string>? TextReceived;
+    public event Action<string, string, string>? IntentReceived;
+    public bool Running => lifetime is { IsCancellationRequested: false };
+    public bool IsConnected => current is { Ready: true };
+    public string SessionId => current is { Ready: true } connection ? connection.SessionId : "";
 
     public void Start(int port, string token)
     {
         Stop();
-        cts = new CancellationTokenSource();
-        Running = true;
-        _ = Task.Run(() => LoopAsync(port, token, cts.Token));
+        var owner = new CancellationTokenSource();
+        lifetime = owner;
+        _ = Task.Run(() => LoopAsync(port, token, owner));
     }
 
     public void Stop()
     {
-        try { cts?.Cancel(); } catch { }
-        cts = null;
-        Running = false;
-        socket = null;
-        StatusChanged?.Invoke("已断开");
+        var previous = Interlocked.Exchange(ref lifetime, null);
+        try { previous?.Cancel(); } catch (ObjectDisposedException) { }
+        var connection = Interlocked.Exchange(ref current, null);
+        try { connection?.Socket.Abort(); } catch (ObjectDisposedException) { }
+        StatusChanged?.Invoke("未开启");
     }
 
-    public async Task AckAsync(string inputId, string status)
+    public Task<bool> StartListeningAsync() => CommandAsync("listening.start", new { });
+    public Task<bool> InterruptAsync() => CommandAsync("speech.interrupt", new { });
+    public Task<bool> StopSpeechAsync() => CommandAsync("speech.clear", new { include_current = true });
+    public Task<bool> SpeakAsync(string text, string groupId) => CommandAsync("speech.enqueue", new
     {
-        if (socket is not { State: WebSocketState.Open }) return;
-        var payload = new
+        utterance_id = "utt-" + Guid.NewGuid().ToString("N"), text, priority = "normal", ttl_ms = 60000, group_id = groupId
+    });
+    public Task<bool> AckAsync(string inputId, string status) => CommandAsync("input.ack", new { input_id = inputId, status });
+
+    private async Task<bool> CommandAsync(string method, object parameters)
+    {
+        var connection = current;
+        var owner = lifetime;
+        if (connection is not { Ready: true } || owner == null)
         {
-            version = 1, kind = "request", id = "ack-" + Guid.NewGuid().ToString("N"),
-            method = "input.ack", @params = new { input_id = inputId, status }
-        };
-        await SendAsync(payload).ConfigureAwait(false);
+            StatusChanged?.Invoke("尚未连接，请先启动本地语音服务。");
+            return false;
+        }
+        try
+        {
+            if (method != "input.ack") connection.LastError = null;
+            await RequestAsync(connection, method, parameters, owner.Token).ConfigureAwait(false);
+            return ReferenceEquals(current, connection);
+        }
+        catch (OperationCanceledException) { return false; }
+        catch (Exception error)
+        {
+            if (ReferenceEquals(current, connection))
+            {
+                connection.LastError = "语音请求失败：" + error.Message;
+                StatusChanged?.Invoke(connection.LastError);
+            }
+            return false;
+        }
     }
 
-    private async Task LoopAsync(int port, string token, CancellationToken cancel)
+    private async Task LoopAsync(int port, string token, CancellationTokenSource owner)
     {
-        var delay = TimeSpan.FromSeconds(2);
+        var delay = 1;
+        try
+        {
+            while (!owner.IsCancellationRequested)
+            {
+                using var connection = new Connection();
+                using var connected = CancellationTokenSource.CreateLinkedTokenSource(owner.Token);
+                Task? receiver = null;
+                Task? heartbeat = null;
+                try
+                {
+                    if (!ReferenceEquals(lifetime, owner)) return;
+                    current = connection;
+                    StatusChanged?.Invoke("正在连接本地服务…");
+                    await connection.Socket.ConnectAsync(new Uri($"ws://127.0.0.1:{port}"), connected.Token).ConfigureAwait(false);
+                    receiver = ReceiveAsync(connection, connected.Token);
+                    var hello = await RequestAsync(connection, "session.hello", new { token, protocol_version = 1 }, connected.Token).ConfigureAwait(false);
+                    connection.SessionId = hello.GetProperty("session_id").GetString() ?? throw new JsonException("缺少语音会话 ID。");
+                    if (string.IsNullOrWhiteSpace(connection.SessionId)) throw new JsonException("缺少语音会话 ID。");
+                    await RequestAsync(connection, "service.status", new { }, connected.Token).ConfigureAwait(false);
+                    if (!ReferenceEquals(lifetime, owner)) return;
+                    connection.Ready = true;
+                    delay = 1;
+                    StatusChanged?.Invoke("已连接，正在开启收音…");
+                    Connected?.Invoke(connection.SessionId);
+                    heartbeat = HeartbeatAsync(connection, connected.Token);
+                    await await Task.WhenAny(receiver, heartbeat).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (owner.IsCancellationRequested) { break; }
+                catch (Exception error)
+                {
+                    if (ReferenceEquals(lifetime, owner)) StatusChanged?.Invoke("连接中断，将重试：" + error.Message);
+                }
+                finally
+                {
+                    connection.Ready = false;
+                    connected.Cancel();
+                    connection.Socket.Abort();
+                    foreach (var pending in connection.Pending.Values) pending.TrySetCanceled();
+                    Interlocked.CompareExchange(ref current, null, connection);
+                    try { if (receiver != null) await receiver.ConfigureAwait(false); } catch { }
+                    try { if (heartbeat != null) await heartbeat.ConfigureAwait(false); } catch { }
+                }
+                try { await Task.Delay(TimeSpan.FromSeconds(delay), owner.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { break; }
+                delay = Math.Min(10, delay * 2);
+            }
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref lifetime, null, owner);
+            owner.Dispose();
+        }
+    }
+
+    private async Task HeartbeatAsync(Connection connection, CancellationToken cancel)
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), cancel).ConfigureAwait(false);
+            await RequestAsync(connection, "service.ping", new { }, cancel).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<JsonElement> RequestAsync(Connection connection, string method, object parameters, CancellationToken cancel)
+    {
+        var id = "req-" + Guid.NewGuid().ToString("N");
+        var completion = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+        connection.Pending[id] = completion;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        timeout.CancelAfter(TimeSpan.FromSeconds(10));
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { version = 1, kind = "request", id, method, @params = parameters }));
+            await connection.SendLock.WaitAsync(timeout.Token).ConfigureAwait(false);
+            try { await connection.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, timeout.Token).ConfigureAwait(false); }
+            finally { connection.SendLock.Release(); }
+            return await completion.Task.WaitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+        { throw new TimeoutException("语音服务未及时响应。"); }
+        finally { connection.Pending.TryRemove(id, out _); }
+    }
+
+    private async Task ReceiveAsync(Connection connection, CancellationToken cancel)
+    {
+        var buffer = new byte[8192];
+        using var message = new MemoryStream();
         while (!cancel.IsCancellationRequested)
         {
-            try
-            {
-                using var ws = new ClientWebSocket();
-                socket = ws;
-                StatusChanged?.Invoke("正在连接语音服务…");
-                await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{port}"), cancel).ConfigureAwait(false);
-                await SendHelloAsync(ws, token, cancel).ConfigureAwait(false);
-                StatusChanged?.Invoke("语音服务已连接");
-                delay = TimeSpan.FromSeconds(2);
-                await ReceiveLoopAsync(ws, cancel).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) { break; }
-            catch (Exception error)
-            {
-                StatusChanged?.Invoke($"语音连接失败：{error.Message}");
-            }
-            finally { socket = null; }
-            try { await Task.Delay(delay, cancel).ConfigureAwait(false); }
-            catch (OperationCanceledException) { break; }
-            delay = TimeSpan.FromSeconds(Math.Min(10, delay.TotalSeconds * 2));
-        }
-        Running = false;
-    }
-
-    private async Task SendHelloAsync(WebSocket ws, string token, CancellationToken cancel)
-    {
-        var payload = new
-        {
-            version = 1, kind = "request", id = "hello-" + Guid.NewGuid().ToString("N"),
-            method = "session.hello", @params = new { token, protocol_version = 1 }
-        };
-        await SendAsync(payload, ws, cancel).ConfigureAwait(false);
-    }
-
-    private async Task ReceiveLoopAsync(WebSocket ws, CancellationToken cancel)
-    {
-        var buffer = new byte[16 * 1024];
-        var text = new StringBuilder();
-        while (!cancel.IsCancellationRequested && ws.State == WebSocketState.Open)
-        {
-            var result = await ws.ReceiveAsync(buffer, cancel).ConfigureAwait(false);
-            if (result.MessageType == WebSocketMessageType.Close)
-            {
-                StatusChanged?.Invoke("语音服务已断开");
-                return;
-            }
-            text.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+            var result = await connection.Socket.ReceiveAsync(buffer, cancel).ConfigureAwait(false);
+            if (result.MessageType == WebSocketMessageType.Close) throw new IOException("语音服务已断开。");
+            if (result.MessageType != WebSocketMessageType.Text || message.Length + result.Count > 65536)
+                throw new IOException("语音消息格式或长度不受支持。");
+            message.Write(buffer, 0, result.Count);
             if (!result.EndOfMessage) continue;
-            var message = text.ToString();
-            text.Clear();
-            Dispatch(message);
+            var raw = Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length);
+            message.SetLength(0);
+            if (ReferenceEquals(current, connection)) Dispatch(connection, raw);
         }
     }
 
-    private void Dispatch(string raw)
+    private void Dispatch(Connection connection, string raw)
     {
         try
         {
             using var doc = JsonDocument.Parse(raw);
             var root = doc.RootElement;
-            if (!root.TryGetProperty("kind", out var kind) || kind.GetString() != "event") return;
-            if (!root.TryGetProperty("name", out var name)) return;
-            var data = root.TryGetProperty("data", out var d) ? d : default;
-            switch (name.GetString())
+            if (root.GetProperty("version").GetInt32() != 1) return;
+            var kind = root.GetProperty("kind").GetString();
+            if (kind == "response")
+            {
+                var id = root.GetProperty("id").GetString() ?? "";
+                if (!connection.Pending.TryGetValue(id, out var pending)) return;
+                if (root.GetProperty("ok").GetBoolean()) pending.TrySetResult(root.GetProperty("result").Clone());
+                else pending.TrySetException(new IOException(root.GetProperty("error").GetProperty("message").GetString() ?? "语音请求被拒绝。"));
+                return;
+            }
+            if (kind != "event" || !connection.Ready || root.GetProperty("session_id").GetString() != connection.SessionId) return;
+            var data = root.GetProperty("data");
+            switch (root.GetProperty("name").GetString())
             {
                 case "input.final":
-                {
-                    var id = data.TryGetProperty("input_id", out var i) ? i.GetString() ?? "" : "";
-                    var text = data.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
-                    var intent = data.TryGetProperty("intent", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
-                    if (id.Length == 0 || text.Length == 0 && intent == null) return;
-                    if (!string.IsNullOrWhiteSpace(intent)) IntentReceived?.Invoke(id, intent!);
-                    else TextReceived?.Invoke(id, text);
+                    var inputId = data.GetProperty("input_id").GetString() ?? "";
+                    var text = data.GetProperty("text").GetString() ?? "";
+                    var intent = data.TryGetProperty("intent", out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+                    if (inputId.Length is 0 or > 128 || text.Length > 4000 || string.IsNullOrWhiteSpace(text) && intent == null) return;
+                    if (!connection.Inputs.Add(inputId)) { _ = AckAsync(inputId, "ignored"); return; }
+                    if (connection.Inputs.Count > 4096) throw new IOException("语音输入过多，请重新连接。");
+                    if (!string.IsNullOrWhiteSpace(intent)) IntentReceived?.Invoke(connection.SessionId, inputId, intent);
+                    else TextReceived?.Invoke(connection.SessionId, inputId, text);
                     break;
-                }
+                case "recognition.started": connection.LastError = null; InputStarted?.Invoke(connection.SessionId); break;
+                case "speech.started": connection.LastError = null; break;
+                case "recognition.timeout": StatusChanged?.Invoke("没听清，请点「说一句」重试。"); break;
+                case "state.changed":
+                    var playback = data.TryGetProperty("playback", out var p) ? p.GetString() : "idle";
+                    var listening = data.TryGetProperty("listening", out var l) ? l.GetString() : "disabled";
+                    StatusChanged?.Invoke(connection.LastError ?? (playback == "playing" ? "正在播报，点「说一句」可打断。" : listening switch
+                    {
+                        "listening" => "正在听，请说话…", "recognizing" => "正在识别…",
+                        "waiting_wake" => "等待唤醒「搭子」，也可点「说一句」。", _ => "麦克风未开启。"
+                    }));
+                    break;
+                case "service.error":
+                    connection.LastError = data.GetProperty("message").GetString() ?? "语音服务出错。";
+                    StatusChanged?.Invoke(connection.LastError);
+                    break;
             }
         }
-        catch (JsonException) { }
-    }
-
-    private Task SendAsync(object payload) => SendAsync(payload, socket!, CancellationToken.None);
-
-    private async Task SendAsync(object payload, WebSocket ws, CancellationToken cancel)
-    {
-        var bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload));
-        await sendLock.WaitAsync(cancel).ConfigureAwait(false);
-        try { await ws.SendAsync(bytes, WebSocketMessageType.Text, true, cancel).ConfigureAwait(false); }
-        finally { sendLock.Release(); }
+        catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { }
     }
 }

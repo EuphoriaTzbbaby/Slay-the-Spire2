@@ -1,5 +1,11 @@
 using SpireCompanion.Core;
 
+if (args is ["--voice-client-check", var voicePort, var voiceToken])
+{
+    await VoiceChecks.WireAsync(int.Parse(voicePort), voiceToken);
+    return;
+}
+
 if (args is ["--inspect-mod", var modPath])
 {
     ModDependencyCheck.Run(modPath);
@@ -103,6 +109,7 @@ Check("Snapshot fingerprint excludes itself and detects combat changes", () => {
 });
 passed += ChatChecks.RunAsync().GetAwaiter().GetResult();
 passed += VaultChecks.Run();
+passed += VoiceChecks.Preferences();
 Console.WriteLine($"{passed} checks passed. No game process or saves accessed.");
 
 public static class UnsupportedSolver { }

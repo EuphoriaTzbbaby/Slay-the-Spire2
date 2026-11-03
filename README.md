@@ -40,16 +40,19 @@ git submodule update --init --recursive
 
 ## 当前状态
 
-已有三个上游项目；C# 主工程位于 game/legacy/，已完成状态面板、手动结束回合、暂停控制、状态导出、CombatSolver 接管桥接和在线模型文字聊天代码；编译及独立控制检查通过，真实战斗集成尚待验收。自动托管、语音服务和多人 CombatSolver 适配尚待实现。
+已有三个上游项目；正式 C# 工程位于 game/legacy/，具备状态快照、模型聊天、局外自动操作及 CombatSolver 桥接。策略优化由另外两位同学推进，游戏负责人集中处理集成、交互、发布与语音联调。具体游戏实测进度见下方进度文档。
+
+语音基本调试版已加入三种交流模式：**文字→文字、语音→文字、语音→语音（保留文字）**。Python 服务使用本地中文识别与系统 TTS，游戏端复用同一聊天链路。准备和启动：`python3 scripts/voice_dev.py setup`、`python3 scripts/voice_dev.py run`；验收优先点击「说一句」。真实人声、游戏完整闭环、Windows 音频及播报期间唤醒仍待验收，详见 [voice/README.md](voice/README.md)。多人适配仍属后续工作。
 
 ## 验证
 
 ```bash
 python scripts/check_repository.py
 python scripts/game_dev.py check
+python scripts/voice_dev.py check
 ```
 
-检查需要 Python 3.11+，控制检查另需 .NET 9 SDK；不启动游戏或采集麦克风。构建和安装主 Mod 见 [主工程说明](game/legacy/README.md)。主工程编译需要本机游戏程序集。
+检查需要 Python 3.11+，控制检查另需 .NET 9 SDK；语音检查需先安装语音环境，不启动游戏或采集麦克风。构建和安装主 Mod 见 [主工程说明](game/legacy/README.md)。主工程编译需要本机游戏程序集。开发与 GitHub 提交约定见 [AGENTS.md](AGENTS.md)。
 
 ## 文档
 

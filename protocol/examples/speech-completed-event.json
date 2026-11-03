@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "kind": "event",
+  "event_id": "evt-002",
+  "session_id": "voice-example",
+  "seq": 2,
+  "name": "speech.completed",
+  "data": {
+    "utterance_id": "utt-001"
+  }
+}

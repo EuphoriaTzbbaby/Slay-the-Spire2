@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "kind": "request",
+  "id": "req-interrupt-001",
+  "method": "speech.interrupt",
+  "params": {}
+}

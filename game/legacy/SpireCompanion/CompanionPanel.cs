@@ -58,9 +58,14 @@ internal sealed class CompanionPanel
     private bool solverAuto;
     private bool solverSuspended;
     private bool voiceEnabled;
-    private Button voiceToggle = null!;
+    private bool voiceOutputEnabled;
+    private OptionButton interactionMode = null!;
+    private Button voiceListen = null!;
+    private Button voiceStopSpeech = null!;
+    private Button voiceTest = null!;
     private Label voiceStatus = null!;
     private readonly VoiceClient voice = new();
+    private string voiceGroup = Guid.NewGuid().ToString("N");
     private readonly RunPlan plan = new();
     private Label planLabel = null!;
     private string planPath = "";
@@ -152,6 +157,7 @@ internal sealed class CompanionPanel
         autoEnabled = saved.AutoEnabled;
         solverAuto = saved.SolverAuto;
         voiceEnabled = saved.VoiceEnabled;
+        voiceOutputEnabled = voiceEnabled && saved.VoiceOutputEnabled;
         autoToggle = new Button { Text = autoEnabled ? "局外自动操作：开" : "局外自动操作：关" };
         autoToggle.Pressed += ToggleAuto;
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
@@ -159,16 +165,6 @@ internal sealed class CompanionPanel
         controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励结算/休息点/商店/选牌/事件/地图/遗物/宝箱里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。发消息或取消会暂停自动，点「恢复自动执行」继续。"));
         resumeAuto = new Button { Text = "恢复自动执行", Visible = false };
         resumeAuto.Pressed += ResumeAuto;
-        voiceToggle = new Button { Text = voiceEnabled ? "语音输入：开" : "语音输入：关" };
-        voiceToggle.Pressed += ToggleVoice;
-        UiStyle.Secondary(voiceToggle); UiStyle.Size(voiceToggle, 40);
-        controlCard.AddChild(voiceToggle);
-        voiceStatus = new Label { Text = voiceEnabled ? "语音：等待连接" : "语音：未开启" };
-        voiceStatus.AddThemeColorOverride("font_color", UiStyle.Muted);
-        controlCard.AddChild(voiceStatus);
-        voice.StatusChanged += status => mainQueue.Enqueue(() => { if (voiceStatus != null) voiceStatus.Text = "语音：" + status; });
-        voice.TextReceived += (id, text) => mainQueue.Enqueue(() => HandleVoiceText(id, text));
-        voice.IntentReceived += (id, intent) => mainQueue.Enqueue(() => HandleVoiceIntent(id, intent));
         UiStyle.Primary(resumeAuto); UiStyle.Size(resumeAuto, 42);
         controlCard.AddChild(resumeAuto);
         solverToggle = new Button { Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关" };
@@ -191,9 +187,50 @@ internal sealed class CompanionPanel
         UiStyle.Ghost(export); UiStyle.Size(export, 40);
         debugCard.AddChild(export);
 
+        var voiceCard = UiStyle.Card(chatBody, "交流方式");
+        interactionMode = new OptionButton();
+        interactionMode.AddItem("文字 → 文字");
+        interactionMode.AddItem("语音 → 文字");
+        interactionMode.AddItem("语音 → 语音（保留文字）");
+        interactionMode.Select(!voiceEnabled ? 0 : voiceOutputEnabled ? 2 : 1);
+        interactionMode.ItemSelected += SetInteractionMode;
+        UiStyle.Size(interactionMode, 42);
+        voiceCard.AddChild(interactionMode);
+        var voiceButtons = new HBoxContainer();
+        voiceListen = new Button { Text = "说一句", Disabled = !voiceEnabled };
+        voiceListen.Pressed += () => { if (voiceEnabled) _ = voice.InterruptAsync(); };
+        voiceStopSpeech = new Button { Text = "停止播报", Disabled = !voiceEnabled };
+        voiceStopSpeech.Pressed += () => { if (voiceEnabled) _ = voice.StopSpeechAsync(); };
+        voiceTest = new Button { Text = "试听", Disabled = !voiceEnabled };
+        voiceTest.Pressed += () => { if (voiceEnabled) _ = voice.SpeakAsync("你好，我是你的尖塔搭子。语音播报测试成功。", "voice-test"); };
+        UiStyle.Primary(voiceListen); UiStyle.Secondary(voiceStopSpeech); UiStyle.Ghost(voiceTest);
+        foreach (var button in new[] { voiceListen, voiceStopSpeech, voiceTest })
+        { UiStyle.Size(button, 40); button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill; voiceButtons.AddChild(button); }
+        voiceCard.AddChild(voiceButtons);
+        voiceStatus = new Label { Text = voiceEnabled ? "语音：等待连接" : "语音：未开启", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        voiceStatus.AddThemeColorOverride("font_color", UiStyle.Muted);
+        voiceCard.AddChild(voiceStatus);
+        voiceCard.AddChild(UiStyle.Hint("点「说一句」后说话，也可尝试唤醒词「搭子」。播报时点「说一句」会停播并收音。三种模式都可以打字。"));
+        voice.StatusChanged += value => mainQueue.Enqueue(() => { if (voiceEnabled) voiceStatus.Text = "语音：" + value; });
+        voice.Connected += session => QueueVoice(session, () => { _ = voice.StartListeningAsync(); });
+        voice.InputStarted += session => QueueVoice(session, () =>
+        {
+            if (!voiceEnabled) return;
+            voiceGroup = Guid.NewGuid().ToString("N");
+            if (chat.Busy) chat.Cancel();
+            SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
+        });
+        voice.TextReceived += (session, id, text) => QueueVoice(session, () => HandleVoiceText(id, text));
+        voice.IntentReceived += (session, id, intent) => QueueVoice(session, () => HandleVoiceIntent(id, intent));
+
         chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
         chat.PlanProvider = () => plan.Describe();
-        chat.Interrupted += () => SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
+        chat.Interrupted += () =>
+        {
+            if (voiceEnabled && voice.IsConnected) _ = voice.StopSpeechAsync();
+            SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
+        };
+        chat.ReplyReady += text => { if (voiceEnabled && voiceOutputEnabled) _ = voice.SpeakAsync(text, voiceGroup); };
         chat.UserSaid += NoteDirective;
         planLabel = new Label { Text = "本局计划：未设置", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         planLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
@@ -219,6 +256,8 @@ internal sealed class CompanionPanel
         tree.Root.TreeExiting += () =>
         {
             autoCts?.Cancel();
+            voiceEnabled = false;
+            voice.Stop();
             chat.Dispose();
             try { SolverBridge.StopOwned(); }
             catch (Exception error) { GD.PushError($"[SpireCompanion] shutdown_stop: {error}"); }
@@ -560,7 +599,7 @@ internal sealed class CompanionPanel
         if (!autoEnabled) StopAuto();
         else { autoActedKey = ""; autoWait = 0; }
         autoLabel.Text = autoEnabled ? "自动：开" : "自动：关";
-        new WindowState(autoEnabled, solverAuto, voiceEnabled).Save(windowStatePath);
+        new WindowState(autoEnabled, solverAuto, voiceEnabled, voiceOutputEnabled).Save(windowStatePath);
         Refresh();
     }
 
@@ -633,12 +672,22 @@ internal sealed class CompanionPanel
         Refresh();
     }
 
-    private void ToggleVoice()
+    private void QueueVoice(string session, Action update)
     {
-        voiceEnabled = !voiceEnabled;
-        voiceToggle.Text = voiceEnabled ? "语音输入：开" : "语音输入：关";
-        new WindowState(autoEnabled, solverAuto, voiceEnabled).Save(windowStatePath);
-        if (voiceEnabled) StartVoice(); else { voice.Stop(); voiceStatus.Text = "语音：未开启"; }
+        mainQueue.Enqueue(() => { if (voiceEnabled && session.Length > 0 && voice.SessionId == session) update(); });
+    }
+
+    private void SetInteractionMode(long index)
+    {
+        var wasEnabled = voiceEnabled;
+        voiceEnabled = index > 0;
+        voiceOutputEnabled = index == 2;
+        voiceListen.Disabled = voiceStopSpeech.Disabled = voiceTest.Disabled = !voiceEnabled;
+        new WindowState(autoEnabled, solverAuto, voiceEnabled, voiceOutputEnabled).Save(windowStatePath);
+        if (!voiceEnabled)
+        { voice.Stop(); voiceStatus.Text = "语音：未开启"; }
+        else if (!wasEnabled) StartVoice();
+        else if (voice.IsConnected) _ = voice.StopSpeechAsync();
     }
 
     private void StartVoice()
@@ -650,14 +699,18 @@ internal sealed class CompanionPanel
             var token = Guid.NewGuid().ToString("N");
             var sessionPath = Path.Combine(directory, "voice-session.json");
             File.WriteAllText(sessionPath, System.Text.Json.JsonSerializer.Serialize(new { port = 17860, token, url = "ws://127.0.0.1:17860" }));
+            if (!OperatingSystem.IsWindows()) File.SetUnixFileMode(sessionPath, UnixFileMode.UserRead | UnixFileMode.UserWrite);
             voice.Start(17860, token);
-            message = $"语音输入已开启，会话信息写入 {sessionPath}；启动 mock 或语音服务后会自动连接。";
+            message = "语音已开启；启动本地语音服务后会自动连接，在聊天页点「说一句」调试。";
             GD.Print($"[SpireCompanion] voice_start path={sessionPath}");
         }
         catch (Exception error)
         {
             voiceEnabled = false;
-            voiceToggle.Text = "语音输入：关";
+            voiceOutputEnabled = false;
+            interactionMode.Select(0);
+            voiceListen.Disabled = voiceStopSpeech.Disabled = voiceTest.Disabled = true;
+            new WindowState(autoEnabled, solverAuto).Save(windowStatePath);
             message = $"语音启动失败：{error.Message}";
             GD.PushError($"[SpireCompanion] voice_start: {error}");
         }
@@ -666,6 +719,7 @@ internal sealed class CompanionPanel
 
     private void HandleVoiceText(string inputId, string text)
     {
+        if (!voiceEnabled) return;
         if (chat.Busy)
         {
             message = "语音输入被忽略：上一条还在回复。";
@@ -673,9 +727,9 @@ internal sealed class CompanionPanel
         }
         else
         {
-            chat.SubmitExternal(text);
-            message = $"语音输入：{text}";
-            _ = voice.AckAsync(inputId, "accepted");
+            var accepted = chat.SubmitExternal(text);
+            message = accepted ? $"语音输入：{text}" : "当前无法提交语音，请检查聊天设置或稍后重试。";
+            _ = voice.AckAsync(inputId, accepted ? "accepted" : "rejected");
         }
         if (decisionStatus != null) decisionStatus.Text = message;
         GD.Print($"[SpireCompanion] voice_input id={inputId} text={text}");
@@ -683,6 +737,7 @@ internal sealed class CompanionPanel
 
     private void HandleVoiceIntent(string inputId, string intent)
     {
+        if (!voiceEnabled) return;
         var handled = true;
         switch (intent)
         {
@@ -691,16 +746,17 @@ internal sealed class CompanionPanel
                 if (SolverBridge.Owned) { solverSuspended = true; try { SolverBridge.StopOwned(); } catch (Exception e) { GD.PushError($"[SpireCompanion] voice_stop_solver: {e}"); } }
                 break;
             case "resume":
-                ResumeAuto();
-                chat.Notify("语音：已恢复自动执行。");
+                handled = autoEnabled;
+                if (handled) { ResumeAuto(); chat.Notify("语音：已恢复自动执行。"); }
                 break;
             case "handoff":
-                try { if (!SolverBridge.Owned && SolverBridge.CanStart) SolverBridge.Start(); }
+                try { handled = SolverBridge.Owned || SolverBridge.CanStart; if (!SolverBridge.Owned && handled) SolverBridge.Start(); }
                 catch (Exception error) { GD.PushWarning($"[SpireCompanion] voice_handoff: {error.Message}"); handled = false; }
                 break;
             default: handled = false; break;
         }
         _ = voice.AckAsync(inputId, handled ? "accepted" : "ignored");
+        if (!handled) chat.Notify("这条语音口令当前不可执行，请检查自动开关或战斗状态。");
         GD.Print($"[SpireCompanion] voice_intent intent={intent} handled={handled}");
     }
 
@@ -710,7 +766,7 @@ internal sealed class CompanionPanel
         if (solverAuto) solverSuspended = false;
         solverToggle.Text = solverAuto ? "自动接管战斗：开" : "自动接管战斗：关";
         message = solverAuto ? "已开启自动接管：每场战斗开始后自动交给 CombatSolver。" : "已关闭自动接管，战斗需要手动点。";
-        new WindowState(autoEnabled, solverAuto, voiceEnabled).Save(windowStatePath);
+        new WindowState(autoEnabled, solverAuto, voiceEnabled, voiceOutputEnabled).Save(windowStatePath);
         solverRetry = 0;
         Refresh();
     }
@@ -739,7 +795,7 @@ internal sealed class CompanionPanel
         autoEnabled = false;
         if (autoToggle != null) autoToggle.Text = "局外自动操作：关";
         if (autoLabel != null) autoLabel.Text = "自动：关";
-        if (windowStatePath.Length > 0) new WindowState(false, solverAuto, voiceEnabled).Save(windowStatePath);
+        if (windowStatePath.Length > 0) new WindowState(false, solverAuto, voiceEnabled, voiceOutputEnabled).Save(windowStatePath);
         autoPending = "";
         autoCts?.Cancel();
         autoCts = null;
@@ -1354,7 +1410,7 @@ internal sealed class CompanionPanel
             solverSuspended = false;
             autoToggle.Text = "局外自动操作：开";
             autoLabel.Text = "自动：开";
-            new WindowState(autoEnabled, solverAuto, voiceEnabled).Save(windowStatePath);
+            new WindowState(autoEnabled, solverAuto, voiceEnabled, voiceOutputEnabled).Save(windowStatePath);
             message = "快捷键 WW：已开启自动操作。";
             decisionStatus.Text = message;
             chat.Notify(message);

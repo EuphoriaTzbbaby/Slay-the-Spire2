@@ -32,3 +32,10 @@ jobs:
           dotnet-version: '9.0.x'
       - name: Check game action control without game installation
         run: python scripts/game_dev.py check
+      - name: Install WebSocket dependency for audio-free contract checks
+        run: python -m pip install "websockets>=14,<17"
+      - name: Check voice protocol and CSharp client without audio devices
+        env:
+          SPIRE_VOICE_WIRE_CHECK: "1"
+          PYTHONUTF8: "1"
+        run: python -m unittest discover -s voice/tests -v

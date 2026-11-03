@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "kind": "request",
+  "id": "req-listen-001",
+  "method": "listening.start",
+  "params": {}
+}

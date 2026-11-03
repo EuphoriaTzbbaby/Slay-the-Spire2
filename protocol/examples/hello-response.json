@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "kind": "response",
+  "id": "req-hello-001",
+  "ok": true,
+  "result": {
+    "session_id": "voice-example",
+    "features": [
+      "asr",
+      "tts",
+      "push_to_talk"
+    ],
+    "service": "ready",
+    "listening": "disabled",
+    "playback": "idle",
+    "queue_length": 0,
+    "current_utterance_id": null,
+    "echo_guard": "mute_during_playback"
+  }
+}

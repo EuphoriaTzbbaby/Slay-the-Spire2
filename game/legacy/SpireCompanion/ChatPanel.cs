@@ -254,11 +254,12 @@ internal sealed class ChatPanel : IDisposable
         { info.Text = "删除失败，请检查服务地址和本地档案权限。"; }
     }
     /// <summary>Entry point for text that did not come from the input box (voice input will use this).</summary>
-    public void SubmitExternal(string text)
+    public bool SubmitExternal(string text)
     {
-        if (disposed) return;
-        if (busy) { info.Text = "上一条还在回复，请稍候或先取消。"; return; }
+        if (disposed || profiles.Busy) return false;
+        if (busy) { info.Text = "上一条还在回复，请稍候或先取消。"; return false; }
         Begin(text);
+        return busy;
     }
 
     public bool Busy => busy;
@@ -296,6 +297,8 @@ internal sealed class ChatPanel : IDisposable
             var apiKey = key.Text;
             int number = ++requestNumber;
             SetBusy(true); info.Text = "搭子正在思考…"; question.Text = "";
+            Interrupted?.Invoke();
+            UserSaid?.Invoke(text);
             Append("你", text);
             ShowTyping();
             var liveState = GameReader.QueryState("all");
@@ -330,6 +333,7 @@ internal sealed class ChatPanel : IDisposable
                 else if (grounding.Unknown.Length > 0)
                     body += $"\n\n（提示：以下名称不在当前界面：{string.Join("、", grounding.Unknown)}；可能是模型记忆，请以屏幕为准。）";
                 Append("搭子", body);
+                if (!blocked) ReplyReady?.Invoke(body);
                 info.Text = changed ? "局面已变化：这条建议基于提问时的状态，可重新分析。" : "建议已返回，由你决定是否采用。";
             });
         }
@@ -373,6 +377,9 @@ internal sealed class ChatPanel : IDisposable
 
     /// <summary>Raised with the player's text, so auto decisions can honour explicit instructions.</summary>
     public event Action<string>? UserSaid;
+
+    /// <summary>Successful visible replies share the same optional TTS output path.</summary>
+    public event Action<string>? ReplyReady;
 
     public (ChatSettings Settings, string ApiKey) RequestContext => (settings, key.Text);
 

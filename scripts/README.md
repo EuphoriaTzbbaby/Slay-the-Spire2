@@ -9,3 +9,5 @@
 启动、打包和联调脚本统一放在本目录，旧 Python 原型测试入口已移除。
 
 - game_smoke.py：macOS 独立游戏副本、离线测试账号的加载检查；运行后清理副本和测试账号，保留 .local/smoke 下的日志。验证 Mod 初始化、主菜单状态读取，以及窗口几何（位于视口内、聊天/设置/游戏状态三个页签、滚动区撑开）。
+
+- voice_dev.py：`setup` 创建独立语音环境并下载中文模型；`devices`、`test-mic`、`test-tts` 做真实音频调试；`run` 启动本机语音服务；`check` 跑不采集音频的协议检查。详见 [voice/README.md](../voice/README.md)。

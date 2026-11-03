@@ -1,131 +1,82 @@
-"""Minimal mock voice service for stage 2 (voice -> text chat).
-
-Implements just enough of protocol v1: session.hello, input.final events and
-input.ack logging. Type a sentence in the terminal and it is delivered to the
-mod as if ASR had produced it.
-
-Usage:
-    python3 voice/mock_voice_server.py            # interactive
-    python3 voice/mock_voice_server.py --demo     # send three demo inputs
-"""
-
+"""Protocol-only voice simulator: terminal input and printed TTS, never microphone access."""
 from __future__ import annotations
 
 import argparse
 import asyncio
-import json
-import sys
 from pathlib import Path
+import sys
+import time
+import uuid
 
-import websockets
-
-CLIENTS: set = set()
-TOKEN_FILE = Path.home() / "Library/Application Support/SlayTheSpire2/spire-companion/voice-session.json"
-ACTIVE_TOKEN_FILE = TOKEN_FILE
-INTENTS = {
-    "暂停": "pause", "等一下": "pause", "停": "pause",
-    "恢复": "resume", "继续": "resume", "继续操作": "resume",
-    "到你了": "handoff", "你来打": "handoff", "你来": "handoff",
-}
-SEQ = 0
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+from spire_voice.common import default_token_file, intent_for
+from spire_voice.service import VoiceServer
+from websockets.asyncio.server import serve
 
 
-def expected_token() -> str | None:
-    try:
-        data = json.loads(ACTIVE_TOKEN_FILE.read_text(encoding="utf-8"))
-        return data.get("token")
-    except Exception:
+class MockMicrophone:
+    def start(self): pass
+    def stop(self): pass
+    def reset(self): pass
+    def mute(self, value): pass
+
+    def next_result(self):
+        time.sleep(0.1)
         return None
 
 
-async def send_event(text: str) -> None:
-    global SEQ
-    if not CLIENTS:
-        print("[mock] 还没有游戏连接，先在游戏里打开「语音输入：开」")
+class MockSpeech:
+    async def speak(self, text):
+        print(f"[mock] 模拟播报（无声音）：{text}", flush=True)
+        await asyncio.sleep(0.05)
+
+
+async def send_input(server, text):
+    session = server.owner
+    if session is None or not session.authenticated or session.recognition is None:
+        print("[mock] 先在游戏聊天页选择「语音 → 文字」或「语音 → 语音」，等待连接。", flush=True)
         return
-    SEQ += 1
-    payload = {
-        "version": 1, "kind": "event", "event_id": f"evt-{SEQ}", "session_id": "mock-voice",
-        "seq": SEQ, "name": "input.final",
-        "data": {"input_id": f"in-{SEQ}", "text": text, "language": "zh-CN", "intent": INTENTS.get(text)},
-    }
-    raw = json.dumps(payload, ensure_ascii=False)
-    for ws in list(CLIENTS):
-        try:
-            await ws.send(raw)
-        except Exception:
-            CLIENTS.discard(ws)
-    print(f"[mock] -> input.final {text} (intent={INTENTS.get(text)})")
+    await session.event("input.final", input_id="mock-" + uuid.uuid4().hex,
+                        text=text, language="zh-CN", intent=intent_for(text))
+    print("[mock] 已发送 input.final", flush=True)
 
 
-async def handler(ws) -> None:
-    CLIENTS.add(ws)
-    print("[mock] 游戏已连接")
-    try:
-        async for raw in ws:
-            try:
-                msg = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
-            if msg.get("kind") == "request":
-                method = msg.get("method")
-                rid = msg.get("id")
-                if method == "session.hello":
-                    token = (msg.get("params") or {}).get("token")
-                    want = expected_token()
-                    ok = want is None or token == want
-                    if ok:
-                        reply = {"version": 1, "kind": "response", "id": rid, "ok": True,
-                                 "result": {"session_id": "mock-voice", "features": ["asr"]}}
-                    else:
-                        reply = {"version": 1, "kind": "response", "id": rid, "ok": False,
-                                 "error": {"code": "auth", "message": "token mismatch", "retryable": False}}
-                    await ws.send(json.dumps(reply))
-                    print(f"[mock] hello ok={ok}")
-                elif method == "input.ack":
-                    print(f"[mock] ack {msg.get('params')}")
-                elif method == "service.ping":
-                    await ws.send(json.dumps({"version": 1, "kind": "response", "id": rid, "ok": True, "result": {}}))
-    finally:
-        CLIENTS.discard(ws)
-        print("[mock] 连接断开")
-
-
-async def console(demo: bool) -> None:
-    if demo:
-        await asyncio.sleep(1.0)
-        for text in ("你好", "暂停", "恢复"):
-            await send_event(text)
-            await asyncio.sleep(0.5)
-        return
-    while True:
-        try:
-            line = await asyncio.to_thread(input, "说话(输入文字回车)> ")
-        except EOFError:
-            break
-        text = line.strip()
-        if not text:
-            continue
-        if text in ("exit", "quit"):
-            break
-        await send_event(text)
-
-
-async def main() -> int:
-    parser = argparse.ArgumentParser()
+async def main():
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=17860)
+    parser.add_argument("--token-file", type=Path, default=default_token_file())
     parser.add_argument("--demo", action="store_true")
-    parser.add_argument("--token-file", default=str(TOKEN_FILE))
     args = parser.parse_args()
-    global ACTIVE_TOKEN_FILE
-    ACTIVE_TOKEN_FILE = Path(args.token_file)
-    want = expected_token()
-    print(f"[mock] token file: {ACTIVE_TOKEN_FILE} ({'已读取' if want else '不存在，接受任意 token'})")
-    async with websockets.serve(handler, "127.0.0.1", args.port):
-        print(f"[mock] 监听 ws://127.0.0.1:{args.port}")
-        await console(args.demo)
-    return 0
+    server = VoiceServer(args.token_file, MockMicrophone(), MockSpeech())
+    async with serve(server.handler, "127.0.0.1", args.port, max_size=65536):
+        print(f"[mock] 监听 ws://127.0.0.1:{args.port}；需要游戏会话鉴权，不采集或播放音频。", flush=True)
+        if args.demo:
+            async with asyncio.timeout(30):
+                while server.owner is None or server.owner.recognition is None:
+                    await asyncio.sleep(0.1)
+            for text in ("你好", "这手牌怎么打", "请简单回答"):
+                await send_input(server, text)
+                await asyncio.sleep(1)
+            return
+        try:
+            while True:
+                try:
+                    text = (await asyncio.to_thread(input, "模拟说话（exit 退出）> ")).strip()
+                except EOFError:
+                    break
+                if text in ("exit", "quit"):
+                    break
+                if text:
+                    await send_input(server, text)
+        finally:
+            if server.owner:
+                await server.owner.close()
 
 
 if __name__ == "__main__":
-    raise SystemExit(asyncio.run(main()))
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
+    except TimeoutError:
+        sys.exit("[mock] 等待游戏连接超时。")

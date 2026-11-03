@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "kind": "event",
+  "event_id": "evt-001",
+  "session_id": "voice-example",
+  "seq": 1,
+  "name": "input.final",
+  "data": {
+    "input_id": "input-001",
+    "text": "这手牌怎么打？",
+    "language": "zh-CN",
+    "intent": null
+  }
+}

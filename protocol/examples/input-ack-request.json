@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "kind": "request",
+  "id": "req-ack-001",
+  "method": "input.ack",
+  "params": {
+    "input_id": "input-001",
+    "status": "accepted"
+  }
+}

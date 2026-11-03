@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "kind": "event",
+  "event_id": "evt-003",
+  "session_id": "voice-example",
+  "seq": 3,
+  "name": "state.changed",
+  "data": {
+    "service": "ready",
+    "listening": "waiting_wake",
+    "playback": "idle",
+    "queue_length": 0,
+    "current_utterance_id": null,
+    "echo_guard": "mute_during_playback"
+  }
+}
