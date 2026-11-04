@@ -27,6 +27,7 @@ internal sealed class ChatPanel : IDisposable
     };
     private readonly VBoxContainer log = new() { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
     private readonly LineEdit question = new() { PlaceholderText = "问问搭子，或点击分析当前局面", MaxLength = 4000 };
+    private readonly Label voicePreview = new() { Visible = false, AutowrapMode = TextServer.AutowrapMode.WordSmart };
     private readonly Button test = new() { Text = "测试连接" };
     private CancellationTokenSource? probe;
     private readonly Button send = new() { Text = "发送" };
@@ -40,6 +41,10 @@ internal sealed class ChatPanel : IDisposable
     private bool cancelRequested;
     private bool disposed;
     private int requestNumber;
+    private int runningRequestNumber;
+    private string runningQuestion = "";
+    private bool voiceInterrupted;
+    public bool IsSubmittingVoice { get; private set; }
     private ChatSettings settings = new();
 
     public ChatPanel(VBoxContainer chat, VBoxContainer settingsBody, Action<Action> onMain)
@@ -91,6 +96,8 @@ internal sealed class ChatPanel : IDisposable
         log.AddThemeConstantOverride("separation", 8);
         logScroll.AddChild(log);
         transcriptCard.AddChild(logScroll);
+        voicePreview.AddThemeColorOverride("font_color", UiStyle.Muted);
+        chat.AddChild(voicePreview);
         chat.AddChild(question);
         var buttons = new HBoxContainer();
         buttons.AddThemeConstantOverride("separation", 8);
@@ -179,6 +186,7 @@ internal sealed class ChatPanel : IDisposable
             var config = FromFields(); _ = config.RequestUri();
             probe = new CancellationTokenSource();
             int number = ++requestNumber;
+            runningRequestNumber = number;
             SetBusy(true); info.Text = "正在测试 API 连接和模型调用…";
             testInfo.Visible = true; testInfo.Text = "正在测试 API 连接和模型调用…";
             _ = ProbeAsync(number, config, key.Text, probe);
@@ -203,7 +211,7 @@ internal sealed class ChatPanel : IDisposable
         {
             onMain(() =>
             {
-                if (!disposed) { if (cancelRequested) info.Text = "本次请求已取消。"; SetBusy(false); }
+                if (!disposed && number == runningRequestNumber) { if (cancelRequested) info.Text = "本次请求已取消。"; SetBusy(false); }
                 if (ReferenceEquals(probe, request)) probe = null;
                 request.Dispose();
             });
@@ -264,6 +272,33 @@ internal sealed class ChatPanel : IDisposable
 
     public bool Busy => busy;
 
+    public void ShowVoicePreview(string? text)
+    {
+        voicePreview.Visible = text != null;
+        voicePreview.Text = text == null ? "" : text.Length == 0 ? "正在听，你可以继续说…"
+            : "正在听：" + (text.Length > 180 ? text[^180..] : text);
+    }
+
+    public string InterruptForVoice()
+    {
+        if (!busy || probe != null || voiceInterrupted || runningQuestion.Length == 0) return "";
+        voiceInterrupted = true;
+        requestNumber++; // Includes a completed reply still waiting for the UI thread.
+        conversation.InterruptUnshownReply();
+        HideTyping();
+        info.Text = "我在听，等你补充完一起回答。";
+        Interrupted?.Invoke();
+        return runningQuestion;
+    }
+
+    public bool SubmitVoice(string combinedQuestion, string newText)
+    {
+        if (disposed || profiles.Busy || busy) return false;
+        IsSubmittingVoice = true;
+        try { Begin(combinedQuestion, newText); return busy; }
+        finally { IsSubmittingVoice = false; }
+    }
+
     /// <summary>Tool calls run on a worker thread; marshal the read-only game query to the main thread.</summary>
     private string? ToolOnMain(string name, string argument)
     {
@@ -285,7 +320,9 @@ internal sealed class ChatPanel : IDisposable
         return done.Wait(TimeSpan.FromSeconds(3)) ? result : null;
     }
 
-    private void Begin(string text)
+    private void Begin(string text) => Begin(text, null);
+
+    private void Begin(string text, string? displayedText)
     {
         if (disposed || busy || profiles.Busy) return;
         text = text.Trim();
@@ -296,10 +333,14 @@ internal sealed class ChatPanel : IDisposable
             var snapshot = GameReader.Read();
             var apiKey = key.Text;
             int number = ++requestNumber;
-            SetBusy(true); info.Text = "搭子正在思考…"; question.Text = "";
+            runningRequestNumber = number;
+            runningQuestion = text;
+            voiceInterrupted = false;
+            SetBusy(true); info.Text = "搭子正在思考…";
+            if (displayedText == null) question.Text = "";
             Interrupted?.Invoke();
             UserSaid?.Invoke(text);
-            Append("你", text);
+            if ((displayedText ?? text).Length > 0) Append("你", displayedText ?? text);
             ShowTyping();
             var liveState = GameReader.QueryState("all");
             GD.Print("[SpireCompanion] live_state_read");
@@ -333,6 +374,7 @@ internal sealed class ChatPanel : IDisposable
                 else if (grounding.Unknown.Length > 0)
                     body += $"\n\n（提示：以下名称不在当前界面：{string.Join("、", grounding.Unknown)}；可能是模型记忆，请以屏幕为准。）";
                 Append("搭子", body);
+                runningQuestion = ""; // Already visible; a later supplement starts a new turn with this answer in history.
                 if (!blocked) ReplyReady?.Invoke(body);
                 info.Text = changed ? "局面已变化：这条建议基于提问时的状态，可重新分析。" : "建议已返回，由你决定是否采用。";
             });
@@ -344,7 +386,7 @@ internal sealed class ChatPanel : IDisposable
         catch (Exception)
         { onMain(() => { if (!disposed && number == requestNumber) info.Text = "模型请求失败，请检查配置后重试。"; }); }
         finally
-        { onMain(() => { if (!disposed) { if (cancelRequested) info.Text = "本次回复已取消。"; HideTyping(); SetBusy(false); } }); }
+        { onMain(() => { if (!disposed && number == runningRequestNumber) { if (cancelRequested) info.Text = "本次回复已取消。"; HideTyping(); SetBusy(false); runningQuestion = ""; } }); }
     }
     /// <summary>One-shot structured choice for auto mode; never touches the visible conversation.</summary>
     /// <summary>Last question and answer, used as planner context for auto decisions.</summary>

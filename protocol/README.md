@@ -17,7 +17,7 @@
 
 协议与 C# 客户端的实际回环测试见 `voice/tests/test_voice_service.py`；CI 不访问音频设备。典型握手、识别、回执、收音与播报终态示例已放入 `examples/`。
 
-当前没有已接好的实时电平/VAD 事件，`recognition.started` 仅表示收音会话开始。新增人声活动、部分识别等事件时同步语音实现、游戏显示与方法/事件 Schema；不能只修改本说明就宣称已有该能力。
+2026-11-04：持续模式通过 VAD 发出 `recognition.started`，临时转写使用 `recognition.partial`，结束使用一次 `input.final` 或 `recognition.cancelled/timeout`。声明 `speech_activity`、`partial_transcript` 能力；旧 wake/单句兼容路径的 started 仍只表示收音会话。partial 仅用于界面与打断旧回复，不作为模型问题、控制口令或 input.ack 对象。字段 Schema 与示例见 `schemas/recognition-partial.schema.json`、`examples/recognition-partial-event.json`；尚未提供实时电平仪事件。
 
 持续模式的 `listening=continuous` 表示会话保持采集，逐句发送不同 input_id，不代表实时 VAD 阳性。默认 mode=wake 保留旧行为。新增 `schemas/listening-start.schema.json` 描述 mode 参数；持续开始、状态与停止示例在 examples/。旧服务不能静默降级成等待唤醒。
 

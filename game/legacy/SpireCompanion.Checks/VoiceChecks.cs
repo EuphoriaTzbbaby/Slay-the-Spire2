@@ -27,12 +27,14 @@ internal static class VoiceChecks
         var client = new VoiceClient();
         var texts = new ConcurrentQueue<string>();
         var intents = new ConcurrentQueue<string>();
+        var previews = new ConcurrentQueue<string>();
         using var ready = new SemaphoreSlim(0);
         using var inputs = new SemaphoreSlim(0);
         using var errors = new SemaphoreSlim(0);
         int preparations = 0;
         Task Prepare(CancellationToken cancel) { cancel.ThrowIfCancellationRequested(); Interlocked.Increment(ref preparations); return Task.CompletedTask; }
         client.Connected += _ => ready.Release();
+        client.InputPartial += (session, id, text) => previews.Enqueue(text);
         client.TextReceived += (session, id, text) => { texts.Enqueue(text); inputs.Release(); _ = client.AckAsync(id, "accepted"); };
         client.IntentReceived += (session, id, intent) => { intents.Enqueue(intent); inputs.Release(); _ = client.AckAsync(id, "accepted"); };
         client.StatusChanged += value => { if (value == "测试播报失败") errors.Release(); };
@@ -60,6 +62,7 @@ internal static class VoiceChecks
                 Require(!client.IsListening);
                 await Task.Delay(100);
                 Require(texts.Count == session + 1 && intents.Count == session + 1);
+                Require(previews.Count == session + 1 && previews.All(text => text == "这手牌"));
                 client.Stop();
                 Require(!client.Running && !client.IsConnected && !await client.SpeakAsync("不能重放", "stopped"));
                 if (session == 0) client.Start(port, token, Prepare);

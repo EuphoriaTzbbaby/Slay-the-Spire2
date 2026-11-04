@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import queue
 import sys
 import threading
 from array import array
+from collections import deque
 from pathlib import Path
+from .utterance import AudioEvent, UtteranceDecoder
 
 
 def system_audio_status() -> dict:
@@ -50,6 +51,8 @@ class Microphone:
         self.model = None
         self.stream = None
         self.recognizer = None
+        self.decoder = None
+        self.events = deque()
         self.chunks: queue.Queue[bytes] = queue.Queue(maxsize=32)
         self.lock = threading.Lock()
         self.reset_requested = threading.Event()
@@ -69,14 +72,20 @@ class Microphone:
     def start(self):
         import sounddevice as sd
         from vosk import KaldiRecognizer
+        import webrtcvad
         with self.lock:
             if self.stream is not None:
                 return
             info = sd.query_devices(self.device, "input")
             rate = int(info["default_samplerate"])
+            if rate not in (8000, 16000, 32000, 48000):
+                rate = 16000
+                sd.check_input_settings(device=self.device, channels=1, dtype='int16', samplerate=rate)
             self.sample_rate = rate
             self.samples_seen = self.peak = 0
             self.recognizer = KaldiRecognizer(self.model, rate)
+            self.decoder = UtteranceDecoder(self.recognizer, webrtcvad.Vad(2), rate)
+            self.events.clear()
             self.reset_requested.clear()
             self._drain()
 
@@ -115,7 +124,18 @@ class Microphone:
             self.muted.clear()
         self.reset()
 
-    def next_result(self) -> str | None:
+    def next_event(self) -> AudioEvent | None:
+        with self.lock:
+            if self.stream is None:
+                return None
+            if self.reset_requested.is_set():
+                self.decoder.reset()
+                self.events.clear()
+                self.reset_requested.clear()
+                self._drain()
+                return AudioEvent('cancelled', reason='audio_reset')
+            if self.events:
+                return self.events.popleft()
         try:
             chunk = self.chunks.get(timeout=0.2)
         except queue.Empty:
@@ -130,13 +150,19 @@ class Microphone:
             if self.stream is None:
                 return None
             if self.reset_requested.is_set():
-                self.recognizer.Reset()
+                self.decoder.reset()
+                self.events.clear()
                 self.reset_requested.clear()
                 self._drain()
-                return None
-            if self.recognizer.AcceptWaveform(chunk):
-                return json.loads(self.recognizer.Result()).get("text", "")
+                return AudioEvent('cancelled', reason='audio_reset')
+            self.events.extend(self.decoder.feed(chunk))
+            if self.events:
+                return self.events.popleft()
         return None
+
+    def next_result(self) -> str | None:
+        event = self.next_event()
+        return event.text if event and event.kind == 'final' else None
 
     def stop(self):
         with self.lock:

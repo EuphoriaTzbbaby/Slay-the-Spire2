@@ -72,6 +72,7 @@ internal sealed class CompanionPanel
     private readonly DoubleTapShortcut voiceShortcut = new();
     private bool voiceChatActive;
     private readonly VoiceInputQueue voiceInputs = new();
+    private string voiceDraftId = "", interruptedVoiceQuestion = "";
     private string voiceStartingSession = "";
     private string voiceGroup = Guid.NewGuid().ToString("N");
     private readonly RunPlan plan = new();
@@ -219,19 +220,33 @@ internal sealed class CompanionPanel
         voiceStatus = new Label { Text = "语音聊天已关闭，QQ 开启。", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         voiceStatus.AddThemeColorOverride("font_color", UiStyle.Muted);
         voiceCard.AddChild(voiceStatus);
-        voiceCard.AddChild(UiStyle.Hint("QQ 开启持续监听，再按 QQ 关闭；每句话说完停顿即可继续说，无需唤醒词。输入框打字不触发；也可点「关闭语音」。"));
+        voiceCard.AddChild(UiStyle.Hint("QQ 开启或关闭；说话时显示转写，稍停自动发送。搭子思考时可以补充，会结合前一句重新回答。输入框打字不触发 QQ。"));
         voice.StatusChanged += value => mainQueue.Enqueue(() => { if (voiceEnabled) voiceStatus.Text = "语音：" + value; });
         voice.Connected += session => QueueVoice(session, () =>
         {
-            voiceInputs.Clear();
+            ClearVoiceTurns();
             if (voiceChatActive) PrepareVoiceInput(session);
             else voiceStatus.Text = "语音服务已连接，QQ 开启持续聊天。";
         });
-        voice.InputStarted += session => QueueVoice(session, () =>
+        voice.InputStarted += (session, id) => QueueVoice(session, () =>
         {
             if (!voiceEnabled || !voiceChatActive) return;
+            voiceDraftId = id;
+            chat.ShowVoicePreview("");
             voiceGroup = Guid.NewGuid().ToString("N");
             SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
+        });
+        voice.InputPartial += (session, id, text) => QueueVoice(session, () =>
+        {
+            if (id != voiceDraftId) return;
+            chat.ShowVoicePreview(text);
+            InterruptReplyForVoice();
+        });
+        voice.InputEnded += (session, id) => QueueVoice(session, () =>
+        {
+            if (id != voiceDraftId) return;
+            voiceDraftId = "";
+            chat.ShowVoicePreview(null);
         });
         voice.TextReceived += (session, id, text) => QueueVoice(session, () => HandleVoiceText(id, text));
         voice.IntentReceived += (session, id, intent) => QueueVoice(session, () => HandleVoiceIntent(id, intent));
@@ -244,7 +259,11 @@ internal sealed class CompanionPanel
             SuspendAuto("你在和搭子讨论，自动操作已暂停；点「恢复自动执行」继续。");
         };
         chat.ReplyReady += text => { if (voiceChatActive && voiceEnabled && voiceOutputEnabled) _ = voice.SpeakAsync(text, voiceGroup); };
-        chat.UserSaid += NoteDirective;
+        chat.UserSaid += text =>
+        {
+            if (!chat.IsSubmittingVoice) { voiceInputs.Clear(); interruptedVoiceQuestion = ""; }
+            NoteDirective(text);
+        };
         planLabel = new Label { Text = "本局计划：未设置", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         planLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
         controlCard.AddChild(planLabel);
@@ -298,8 +317,9 @@ internal sealed class CompanionPanel
         PollVoiceShortcut(); // Closing wins over voice messages queued for this frame.
         while (mainQueue.TryDequeue(out var update)) update();
         UpdateVoiceHud();
-        if (voiceChatActive && !chat.Busy && voiceInputs.Take(voice.SessionId) is { } queued)
-            HandleVoiceText(queued.InputId, queued.Text, fromQueue: true);
+        if (voiceChatActive && !voice.IsConnected && (voiceDraftId.Length > 0 || interruptedVoiceQuestion.Length > 0 || voiceInputs.Count > 0))
+            ClearVoiceTurns();
+        SubmitPendingVoiceTurn();
         var viewport = tree.Root.GetVisibleRect().Size;
         var width = Math.Clamp(viewport.X - 40, 360, 620);
         var height = Math.Clamp(viewport.Y - 100, 300, 720);
@@ -710,7 +730,7 @@ internal sealed class CompanionPanel
         if (!voiceEnabled)
         {
             voiceChatActive = false;
-            voiceInputs.Clear();
+            ClearVoiceTurns();
             voiceStartingSession = "";
             voice.Stop();
             voiceStatus.Text = "语音聊天已关闭，QQ 开启。";
@@ -830,28 +850,52 @@ internal sealed class CompanionPanel
         });
     }
 
-    private void HandleVoiceText(string inputId, string text, bool fromQueue = false)
+    private void ClearVoiceTurns()
+    {
+        voiceInputs.Clear();
+        voiceDraftId = interruptedVoiceQuestion = "";
+        chat?.ShowVoicePreview(null);
+    }
+
+    private void InterruptReplyForVoice()
+    {
+        var previous = chat.InterruptForVoice();
+        if (previous.Length > 0) interruptedVoiceQuestion = previous;
+    }
+
+    private void SubmitPendingVoiceTurn()
+    {
+        if (!voiceChatActive || !voice.IsConnected || voiceDraftId.Length > 0 || chat.Busy) return;
+        var turn = voiceInputs.TakeTurn(voice.SessionId, interruptedVoiceQuestion);
+        if (turn != null)
+        {
+            var accepted = chat.SubmitVoice(turn.Question, turn.NewText);
+            foreach (var input in turn.Inputs) _ = voice.AckAsync(input.InputId, accepted ? "accepted" : "rejected");
+            interruptedVoiceQuestion = "";
+            if (!accepted) chat.Notify("这句话暂时无法提交，请检查聊天设置后重试。");
+        }
+        else if (interruptedVoiceQuestion.Length > 0)
+        {
+            // A noise/empty utterance must not leave an interrupted valid question unanswered.
+            var previous = interruptedVoiceQuestion;
+            interruptedVoiceQuestion = "";
+            chat.SubmitVoice(previous, "");
+        }
+    }
+
+    private void HandleVoiceText(string inputId, string text)
     {
         if (!voiceEnabled || !voiceChatActive) return;
-        if (chat.Busy || !fromQueue && voiceInputs.Count > 0)
+        if (interruptedVoiceQuestion.Length + voiceInputs.TextLength + text.Length > 8000 || !voiceInputs.TryEnqueue(voice.SessionId, inputId, text))
         {
-            if (voiceInputs.TryEnqueue(voice.SessionId, inputId, text))
-            {
-                message = "已收到语音，等待上一条回复后处理。";
-                chat.Notify("语音已收到（等待回复）：" + text);
-            }
-            else
-            {
-                message = "语音待处理较多，请稍等几句回复后再说。";
-                chat.Notify(message);
-                _ = voice.AckAsync(inputId, "rejected");
-            }
+            message = "这一轮补充较多，请等回复后再继续；刚才这句尚未提交。";
+            chat.Notify(message);
+            _ = voice.AckAsync(inputId, "rejected");
         }
         else
         {
-            var accepted = chat.SubmitExternal(text);
-            message = accepted ? $"语音输入：{text}" : "当前无法提交语音，请检查聊天设置或稍后重试。";
-            _ = voice.AckAsync(inputId, accepted ? "accepted" : "rejected");
+            InterruptReplyForVoice();
+            message = "听到了，正在结合你的补充准备回复。";
         }
         if (decisionStatus != null) decisionStatus.Text = message;
         GD.Print($"[SpireCompanion] voice_input id={inputId} text={text}");

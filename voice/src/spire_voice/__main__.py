@@ -69,9 +69,13 @@ async def run(args):
         try:
             async with asyncio.timeout(15):
                 while True:
-                    text = await asyncio.to_thread(microphone.next_result)
-                    if text:
-                        print("识别结果：" + text)
+                    event = await asyncio.to_thread(microphone.next_event)
+                    if event and event.kind == 'started':
+                        print('检测到说话，正在听…', flush=True)
+                    elif event and event.kind == 'partial':
+                        print('临时转写：' + event.text, flush=True)
+                    elif event and event.kind == 'final':
+                        print("识别结果：" + event.text)
                         return
         except TimeoutError:
             print(f"输入诊断：{microphone.samples_seen} 个采样，峰值 {microphone.peak}/32768；没有得到有效最终文本。", flush=True)

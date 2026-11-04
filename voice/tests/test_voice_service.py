@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from spire_voice.common import intent_for, speech_text
 from spire_voice.service import VoiceServer
 from spire_voice.audio import SystemSpeech
+from spire_voice.utterance import AudioEvent
 from websockets.asyncio.client import connect
 from websockets.asyncio.server import serve
 
@@ -41,8 +42,10 @@ class FakeMicrophone:
             try: self.chunks.get_nowait()
             except queue.Empty: break
 
-    def next_result(self):
-        try: return self.chunks.get(timeout=0.02)
+    def next_event(self):
+        try:
+            item = self.chunks.get(timeout=0.02)
+            return item if isinstance(item, AudioEvent) else AudioEvent('final', item)
         except queue.Empty: return None
 
 
@@ -189,6 +192,28 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(self.ws.recv(), 0.1)
         self.assertEqual((await self.request("service.status"))["result"]["listening"], "continuous")
 
+    async def test_activity_and_preview_do_not_submit_until_final(self):
+        await self.hello()
+        await self.request('listening.start', {'mode': 'continuous'})
+        self.mic.chunks.put(AudioEvent('started'))
+        self.mic.chunks.put(AudioEvent('partial', '我 想 先'))
+        preview = await self.event('recognition.partial')
+        self.assertEqual(preview['data']['text'], '我想先')
+        self.assertFalse(any(e.get('name') == 'input.final' for e in self.events))
+        self.mic.chunks.put(AudioEvent('final', '我 想 先 防御'))
+        final = await self.event('input.final')
+        self.assertEqual(final['data']['input_id'], preview['data']['input_id'])
+        self.assertEqual(final['data']['text'], '我想先防御')
+
+    async def test_empty_activity_cancels_preview_without_submitting(self):
+        await self.hello()
+        await self.request('listening.start', {'mode': 'continuous'})
+        self.mic.chunks.put(AudioEvent('started'))
+        self.mic.chunks.put(AudioEvent('cancelled', reason='no_text'))
+        await self.event('recognition.cancelled')
+        self.assertIsNone(self.bridge.owner.input_id)
+        self.assertFalse(any(e.get('name') == 'input.final' for e in self.events))
+
     async def test_stop_cancels_unfinished_input_and_fresh_start_drops_old_audio(self):
         await self.hello()
         await self.request("listening.start", {"mode": "continuous"})
@@ -311,6 +336,14 @@ class CSharpWireTests(unittest.IsolatedAsyncioTestCase):
                             await ws.send(json.dumps({"version": 1, "kind": "event", "event_id": name, "session_id": session,
                                                       "seq": 10, "name": name, "data": data}, ensure_ascii=False))
                     if method == "listening.start" and request["params"].get("mode") != "continuous":
+                        for name, data, sid in [
+                            ('recognition.started', {'input_id': 'same-1'}, session),
+                            ('recognition.partial', {'input_id': 'same-1', 'text': '这手牌'}, session),
+                            ('recognition.partial', {'input_id': 'wrong-input', 'text': '不是本句'}, session),
+                            ('recognition.partial', {'input_id': 'same-1', 'text': '长' * 4001}, session),
+                            ('recognition.partial', {'input_id': 'same-1', 'text': '旧会话草稿'}, 'wrong-session')]:
+                            await ws.send(json.dumps({'version': 1, 'kind': 'event', 'event_id': name + sid,
+                                'session_id': sid, 'seq': 0, 'name': name, 'data': data}, ensure_ascii=False))
                         def event(i, text, intent=None, sid=session):
                             return json.dumps({"version": 1, "kind": "event", "event_id": str(i), "session_id": sid,
                                                "seq": i, "name": "input.final", "data": {"input_id": f"same-{i}", "text": text, "intent": intent}}, ensure_ascii=False)
@@ -318,6 +351,9 @@ class CSharpWireTests(unittest.IsolatedAsyncioTestCase):
                         split = raw.index("这".encode()) + 1
                         await ws.send([raw[:split], raw[split:]], text=True)
                         await ws.send(event(1, "这手牌怎么打？"))
+                        await ws.send(json.dumps({'version': 1, 'kind': 'event', 'event_id': 'late-preview',
+                            'session_id': session, 'seq': 2, 'name': 'recognition.partial',
+                            'data': {'input_id': 'same-1', 'text': '已结束的草稿'}}, ensure_ascii=False))
                         await ws.send(event(3, "错误会话", sid="wrong-session"))
                         await ws.send(event(2, "暂停", "pause"))
             except Exception:

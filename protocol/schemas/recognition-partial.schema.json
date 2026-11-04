@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Voice protocol v1 recognition.partial event",
+  "type": "object",
+  "required": ["version", "kind", "event_id", "session_id", "seq", "name", "data"],
+  "properties": {
+    "version": {"const": 1},
+    "kind": {"const": "event"},
+    "event_id": {"type": "string", "minLength": 1},
+    "session_id": {"type": "string", "minLength": 1},
+    "seq": {"type": "integer", "minimum": 0},
+    "name": {"const": "recognition.partial"},
+    "data": {
+      "type": "object",
+      "required": ["input_id", "text"],
+      "properties": {
+        "input_id": {"type": "string", "minLength": 1, "maxLength": 128},
+        "text": {"type": "string", "minLength": 1, "maxLength": 4000}
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -7,7 +7,7 @@ name = "spire-voice"
 version = "0.1.0"
 description = "Local Chinese microphone and system speech bridge for SpireCompanion"
 requires-python = ">=3.11"
-dependencies = ["websockets>=14,<17", "sounddevice>=0.5,<0.6", "vosk>=0.3.44,<0.4"]
+dependencies = ["websockets>=14,<17", "sounddevice>=0.5,<0.6", "vosk>=0.3.44,<0.4", "webrtcvad-wheels>=2.0.14,<3"]
 
 [project.scripts]
 spire-voice = "spire_voice.__main__:main"

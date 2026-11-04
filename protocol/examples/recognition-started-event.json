@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "kind": "event",
+  "event_id": "evt-activity-001",
+  "session_id": "voice-example",
+  "seq": 1,
+  "name": "recognition.started",
+  "data": {"input_id": "input-001"}
+}

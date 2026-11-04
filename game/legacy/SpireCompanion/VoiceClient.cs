@@ -18,6 +18,7 @@ internal sealed class VoiceClient
         public string? LastError;
         public bool Ready;
         public volatile string Listening = "disabled";
+        public string RecognizingId = "";
         public void Dispose()
         {
             Socket.Abort();
@@ -31,7 +32,9 @@ internal sealed class VoiceClient
     private volatile string? connectionError;
     public event Action<string>? StatusChanged;
     public event Action<string>? Connected;
-    public event Action<string>? InputStarted;
+    public event Action<string, string>? InputStarted;
+    public event Action<string, string, string>? InputPartial;
+    public event Action<string, string>? InputEnded;
     public event Action<string, string, string>? TextReceived;
     public event Action<string, string, string>? IntentReceived;
     public bool Running => lifetime is { IsCancellationRequested: false };
@@ -246,12 +249,32 @@ internal sealed class VoiceClient
                     if (inputId.Length is 0 or > 128 || text.Length > 4000 || string.IsNullOrWhiteSpace(text) && intent == null) return;
                     if (!connection.Inputs.Add(inputId)) { _ = AckAsync(inputId, "ignored"); return; }
                     if (connection.Inputs.Count > 4096) throw new IOException("语音输入过多，请重新连接。");
+                    EndInput(connection, inputId);
                     if (!string.IsNullOrWhiteSpace(intent)) IntentReceived?.Invoke(connection.SessionId, inputId, intent);
                     else TextReceived?.Invoke(connection.SessionId, inputId, text);
                     break;
-                case "recognition.started": connection.LastError = null; InputStarted?.Invoke(connection.SessionId); break;
+                case "recognition.started":
+                    connection.LastError = null;
+                    var startedId = data.GetProperty("input_id").GetString() ?? "";
+                    if (startedId.Length is > 0 and <= 128 && startedId != connection.RecognizingId && !connection.Inputs.Contains(startedId))
+                    {
+                        connection.RecognizingId = startedId;
+                        InputStarted?.Invoke(connection.SessionId, startedId);
+                    }
+                    break;
+                case "recognition.partial":
+                    var draft = data.GetProperty("text").GetString() ?? "";
+                    var draftId = data.GetProperty("input_id").GetString() ?? "";
+                    if (draft.Length is > 0 and <= 4000 && draftId.Length > 0 && draftId == connection.RecognizingId)
+                        InputPartial?.Invoke(connection.SessionId, draftId, draft);
+                    break;
+                case "recognition.cancelled":
+                    EndInput(connection, data.GetProperty("input_id").GetString() ?? "");
+                    break;
                 case "speech.started": connection.LastError = null; break;
-                case "recognition.timeout": StatusChanged?.Invoke("这句话没听清，持续模式会继续接收下一句。"); break;
+                case "recognition.timeout":
+                    EndInput(connection, data.GetProperty("input_id").GetString() ?? "");
+                    StatusChanged?.Invoke("这句话没听清，持续模式会继续接收下一句。"); break;
                 case "state.changed":
                     var playback = data.TryGetProperty("playback", out var p) ? p.GetString() : "idle";
                     var listening = data.TryGetProperty("listening", out var l) ? l.GetString() : "disabled";
@@ -265,10 +288,19 @@ internal sealed class VoiceClient
                     break;
                 case "service.error":
                     connection.LastError = data.GetProperty("message").GetString() ?? "语音服务出错。";
+                    if (data.TryGetProperty("input_id", out var failedInput) && failedInput.ValueKind == JsonValueKind.String)
+                        EndInput(connection, failedInput.GetString() ?? "");
                     StatusChanged?.Invoke(connection.LastError);
                     break;
             }
         }
         catch (Exception error) when (error is JsonException or KeyNotFoundException or InvalidOperationException or FormatException) { }
+    }
+
+    private void EndInput(Connection connection, string id)
+    {
+        if (id.Length == 0 || id != connection.RecognizingId) return;
+        connection.RecognizingId = "";
+        InputEnded?.Invoke(connection.SessionId, id);
     }
 }

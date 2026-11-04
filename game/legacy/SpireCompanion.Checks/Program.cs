@@ -119,6 +119,7 @@ passed += VaultChecks.Run();
 passed += VoiceChecks.Preferences();
 passed += VoiceChecks.PendingInputs();
 passed += await VoiceServiceHostChecks.RunAsync();
+passed += await VoiceTurnChecks.RunAsync();
 passed += ShortcutChecks.Run();
 Console.WriteLine($"{passed} checks passed. No game process or saves accessed.");
 

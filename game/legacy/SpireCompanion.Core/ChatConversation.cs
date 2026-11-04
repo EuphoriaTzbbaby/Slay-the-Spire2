@@ -7,6 +7,7 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
     private readonly List<ChatTurn> history = [];
     private CancellationTokenSource? active;
     private bool disposed;
+    private long requestVersion, committedVersion;
     public (string Question, string Answer)? Last
     {
         get { lock (sync) return history.Count == 0 ? null : (history[^1].Question, history[^1].Answer); }
@@ -16,11 +17,13 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
     {
         CancellationTokenSource request;
         ChatTurn[] previous;
+        long version;
         lock (sync)
         {
             ObjectDisposedException.ThrowIf(disposed, this);
             if (active != null) throw new InvalidOperationException("上一条消息仍在处理或取消中。");
             active = request = new CancellationTokenSource();
+            version = ++requestVersion;
             // A different screen invalidates earlier card/option context; start that request clean.
             if (screenChanged) history.Clear();
             previous = history.ToArray();
@@ -39,6 +42,7 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
                     return new(blocked, snapshot.Fingerprint);
                 }
                 history.Add(new(question, text));
+                committedVersion = version;
                 while (history.Count > 6 || history.Sum(t => t.Question.Length + t.Answer.Length) > 18_000) history.RemoveAt(0);
             }
             return new(text, snapshot.Fingerprint);
@@ -49,6 +53,19 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
         }
     }
     public void Cancel() { lock (sync) active?.Cancel(); }
+    /// <summary>The UI is still awaiting this answer; a spoken correction supersedes it.</summary>
+    public void InterruptUnshownReply()
+    {
+        lock (sync)
+        {
+            active?.Cancel();
+            if (history.Count > 0 && committedVersion == requestVersion)
+            {
+                history.RemoveAt(history.Count - 1);
+                committedVersion = 0;
+            }
+        }
+    }
     public void Clear()
     {
         lock (sync)

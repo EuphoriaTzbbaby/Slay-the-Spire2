@@ -157,7 +157,7 @@ class VoiceSession:
             self.authenticated = True
             if self.player is None:
                 self.player = asyncio.create_task(self.play_loop())
-            return {"session_id": self.id, "features": ["asr", "tts", "push_to_talk", "continuous_listening"], **self.status()}
+            return {"session_id": self.id, "features": ["asr", "tts", "push_to_talk", "continuous_listening", "speech_activity", "partial_transcript"], **self.status()}
         if not self.authenticated:
             raise ProtocolError("auth_failed", "请先完成 session.hello。")
         if method in ("service.status", "service.ping"):
@@ -223,7 +223,7 @@ class VoiceSession:
         if self.input_id:
             await self.event("recognition.cancelled", input_id=self.input_id, reason="replaced")
         self.input_id = "input-" + uuid.uuid4().hex
-        self.input_deadline = time.monotonic() + 15
+        self.input_deadline = time.monotonic() + (30 if self.listening_mode == "continuous" else 15)
         if reset_audio:
             self.microphone.reset()
         if wake:
@@ -234,20 +234,37 @@ class VoiceSession:
     async def recognize_loop(self):
         try:
             while True:
-                text = await asyncio.to_thread(self.microphone.next_result)
+                audio = await asyncio.to_thread(self.microphone.next_event)
                 if self.input_id and time.monotonic() > self.input_deadline:
                     await self.event("recognition.timeout", input_id=self.input_id, reason="no_speech_or_too_long")
                     self.input_id = None
                     self.microphone.reset()
                     await self.state()
-                if not text or self.current is not None:
                     continue
-                text = compact(text)
+                if audio is None or self.current is not None:
+                    continue
+                if audio.kind == 'started':
+                    if self.listening_mode == 'continuous':
+                        await self.begin_input(reset_audio=False)
+                    continue
+                if audio.kind == 'partial':
+                    if self.input_id and self.listening_mode == 'continuous':
+                        await self.event('recognition.partial', input_id=self.input_id, text=compact(audio.text)[:4000])
+                    continue
+                if audio.kind == 'cancelled':
+                    if self.input_id and self.listening_mode == 'continuous':
+                        await self.event('recognition.cancelled', input_id=self.input_id, reason=audio.reason)
+                        self.input_id = None
+                        await self.state()
+                    continue
+                if audio.kind != 'final':
+                    continue
+                text = compact(audio.text)
                 if not text:
                     continue
                 if self.input_id is None:
                     if self.listening_mode == "continuous":
-                        # Vosk has ended this utterance. Keep subsequent PCM for the next one.
+                        # Compatibility with a decoder that emits only final text.
                         await self.begin_input(reset_audio=False)
                     else:
                         if not text.startswith("搭子"):

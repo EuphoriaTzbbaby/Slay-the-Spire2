@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "kind": "event",
+  "event_id": "evt-partial-001",
+  "session_id": "voice-example",
+  "seq": 2,
+  "name": "recognition.partial",
+  "data": {"input_id": "input-001", "text": "等等我想先"}
+}
