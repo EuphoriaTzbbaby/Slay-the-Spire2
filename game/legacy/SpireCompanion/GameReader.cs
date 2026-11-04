@@ -40,7 +40,7 @@ using MegaCrit.Sts2.Core.Runs;
 
 namespace SpireCompanion;
 
-internal static class GameReader
+internal static partial class GameReader
 {
     private static readonly string[] ConflictingControllers = ["SpireBuddy", "STS2AIAgent", "CombatSolver"];
 

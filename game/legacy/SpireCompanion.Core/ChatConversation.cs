@@ -8,12 +8,13 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
     private CancellationTokenSource? active;
     private bool disposed;
     private long requestVersion, committedVersion;
+    private long actionVersion;
     public (string Question, string Answer)? Last
     {
         get { lock (sync) return history.Count == 0 ? null : (history[^1].Question, history[^1].Answer); }
     }
 
-    public async Task<ChatReply> AskAsync(ChatSettings settings, string key, string question, GameSnapshot snapshot, string plan = "", bool screenChanged = false, Func<string, string, string?>? toolExecutor = null, Action<string>? toolTrace = null, string liveState = "")
+    public async Task<ChatReply> AskAsync(ChatSettings settings, string key, string question, GameSnapshot snapshot, string plan = "", bool screenChanged = false, Func<string, string, string?>? toolExecutor = null, Action<string>? toolTrace = null, string liveState = "", RoomCommandSession? actions = null)
     {
         CancellationTokenSource request;
         ChatTurn[] previous;
@@ -30,7 +31,7 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
         }
         try
         {
-            var text = await client.AskAsync(settings, key, question, snapshot, previous, request.Token, plan, screenChanged, toolExecutor, toolTrace, liveState).ConfigureAwait(false);
+            var text = await client.AskAsync(settings, key, question, snapshot, previous, request.Token, plan, screenChanged, toolExecutor, toolTrace, liveState, actions).ConfigureAwait(false);
             lock (sync)
             {
                 request.Token.ThrowIfCancellationRequested();
@@ -43,13 +44,25 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
                 }
                 history.Add(new(question, text));
                 committedVersion = version;
+                if (actions?.HasSubmitted == true) actionVersion = version;
                 while (history.Count > 6 || history.Sum(t => t.Question.Length + t.Answer.Length) > 18_000) history.RemoveAt(0);
             }
             return new(text, snapshot.Fingerprint);
         }
         finally
         {
-            lock (sync) { active = null; request.Dispose(); }
+            lock (sync)
+            {
+                // A click cannot be undone by cancelling the following model reply. Preserve its receipt.
+                if (!disposed && actions?.HasSubmitted == true && committedVersion != version)
+                {
+                    history.Add(new(question, actions.Receipt));
+                    committedVersion = actionVersion = version;
+                    while (history.Count > 6 || history.Sum(t => t.Question.Length + t.Answer.Length) > 18_000) history.RemoveAt(0);
+                }
+                active = null;
+                request.Dispose();
+            }
         }
     }
     public void Cancel() { lock (sync) active?.Cancel(); }
@@ -59,7 +72,7 @@ public sealed class ChatConversation(ChatClient client) : IDisposable
         lock (sync)
         {
             active?.Cancel();
-            if (history.Count > 0 && committedVersion == requestVersion)
+            if (history.Count > 0 && committedVersion == requestVersion && actionVersion != requestVersion)
             {
                 history.RemoveAt(history.Count - 1);
                 committedVersion = 0;

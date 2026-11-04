@@ -4,7 +4,7 @@ using SpireCompanion.Core;
 
 namespace SpireCompanion;
 
-internal sealed class ChatPanel : IDisposable
+internal sealed partial class ChatPanel : IDisposable
 {
     private readonly ChatClient client = new();
     private readonly ChatConversation conversation;
@@ -44,7 +44,9 @@ internal sealed class ChatPanel : IDisposable
     private int runningRequestNumber;
     private string runningQuestion = "";
     private bool voiceInterrupted;
+    private RoomCommandSession? runningCommand;
     public bool IsSubmittingVoice { get; private set; }
+    public bool IsCommandRequest => runningCommand != null;
     private ChatSettings settings = new();
 
     public ChatPanel(VBoxContainer chat, VBoxContainer settingsBody, Action<Action> onMain)
@@ -283,12 +285,13 @@ internal sealed class ChatPanel : IDisposable
     {
         if (!busy || probe != null || voiceInterrupted || runningQuestion.Length == 0) return "";
         voiceInterrupted = true;
+        var previous = runningCommand?.HasSubmitted == true ? "" : runningQuestion;
         requestNumber++; // Includes a completed reply still waiting for the UI thread.
         conversation.InterruptUnshownReply();
         HideTyping();
-        info.Text = "我在听，等你补充完一起回答。";
+        info.Text = runningCommand?.HasSubmitted == true ? "之前的点击已提交，我继续听你的补充。" : "我在听，等你补充完一起回答。";
         Interrupted?.Invoke();
-        return runningQuestion;
+        return previous; // Never resubmit a question whose click already reached the game.
     }
 
     public bool SubmitVoice(string combinedQuestion, string newText)
@@ -330,7 +333,7 @@ internal sealed class ChatPanel : IDisposable
         {
             if (text.Length == 0) { info.Text = "请输入消息。"; return; }
             var next = FromFields(); _ = next.RequestUri();
-            var snapshot = GameReader.Read();
+            var snapshot = GameReader.ReadCommandSnapshot();
             var apiKey = key.Text;
             int number = ++requestNumber;
             runningRequestNumber = number;
@@ -339,18 +342,20 @@ internal sealed class ChatPanel : IDisposable
             SetBusy(true); info.Text = "搭子正在思考…";
             if (displayedText == null) question.Text = "";
             Interrupted?.Invoke();
+            runningCommand = RoomCommand.CanOffer(snapshot) && RoomCommand.IsRequested(text) && GameReader.CanExecuteCommand()
+                ? new RoomCommandSession(snapshot, (command, record, token) => ExecuteRoomCommandAsync(number, command, record, token)) : null;
             UserSaid?.Invoke(text);
             if ((displayedText ?? text).Length > 0) Append("你", displayedText ?? text);
             ShowTyping();
             var liveState = GameReader.QueryState("all");
             GD.Print("[SpireCompanion] live_state_read");
             info.Text = "已读取实时状态，正在请求模型…";
-            _ = CompleteAsync(number, next, apiKey, text, snapshot, liveState);
+            _ = CompleteAsync(number, next, apiKey, text, snapshot, liveState, runningCommand);
         }
         catch (ArgumentException error) { info.Text = error.Message; }
         catch (Exception) { info.Text = "当前状态暂不可读，请稍后再试。"; }
     }
-    private async Task CompleteAsync(int number, ChatSettings config, string apiKey, string text, GameSnapshot snapshot, string liveState)
+    private async Task CompleteAsync(int number, ChatSettings config, string apiKey, string text, GameSnapshot snapshot, string liveState, RoomCommandSession? actions)
     {
         try
         {
@@ -358,17 +363,17 @@ internal sealed class ChatPanel : IDisposable
             var screenChanged = lastScreenKey.Length > 0 && screenKey != lastScreenKey;
             lastScreenKey = screenKey;
             var reply = await conversation.AskAsync(config, apiKey, text, snapshot, PlanProvider?.Invoke() ?? "", screenChanged,
-                ToolOnMain, message => Godot.GD.Print($"[SpireCompanion] chat_tool {message}"), liveState).ConfigureAwait(false);
+                ToolOnMain, message => Godot.GD.Print($"[SpireCompanion] chat_tool {message}"), liveState, actions).ConfigureAwait(false);
             onMain(() =>
             {
                 if (disposed || number != requestNumber) return;
                 bool changed;
-                try { changed = GameReader.Read().Fingerprint != reply.Fingerprint; }
+                try { changed = GameReader.ReadCommandSnapshot().Fingerprint != reply.Fingerprint; }
                 catch { changed = true; }
                 var grounding = AnswerGrounding.Check(reply.Text, snapshot);
                 var blocked = reply.Text.StartsWith("（这条回答被拦截", StringComparison.Ordinal);
                 var body = reply.Text;
-                if (changed && !blocked) body = "（这条回答基于提问时的界面，当前界面已变化）\n" + body;
+                if (changed && !blocked && actions?.HasSubmitted != true) body = "（这条回答基于提问时的界面，当前界面已变化）\n" + body;
                 if (blocked)
                     GD.Print("[SpireCompanion] answer_blocked");
                 else if (grounding.Unknown.Length > 0)
@@ -376,7 +381,8 @@ internal sealed class ChatPanel : IDisposable
                 Append("搭子", body);
                 runningQuestion = ""; // Already visible; a later supplement starts a new turn with this answer in history.
                 if (!blocked) ReplyReady?.Invoke(body);
-                info.Text = changed ? "局面已变化：这条建议基于提问时的状态，可重新分析。" : "建议已返回，由你决定是否采用。";
+                info.Text = actions?.HasSubmitted == true ? "本条指令已处理，后续操作等待你的新指令。"
+                    : changed ? "局面已变化：这条建议基于提问时的状态，可重新分析。" : "建议已返回，由你决定是否采用。";
             });
         }
         catch (OperationCanceledException)
@@ -386,7 +392,7 @@ internal sealed class ChatPanel : IDisposable
         catch (Exception)
         { onMain(() => { if (!disposed && number == requestNumber) info.Text = "模型请求失败，请检查配置后重试。"; }); }
         finally
-        { onMain(() => { if (!disposed && number == runningRequestNumber) { if (cancelRequested) info.Text = "本次回复已取消。"; HideTyping(); SetBusy(false); runningQuestion = ""; } }); }
+        { onMain(() => { if (!disposed && number == runningRequestNumber) { if (cancelRequested) info.Text = actions?.HasSubmitted == true ? "已停止后续操作，已提交的点击不会撤销。" : "本次回复已取消。"; HideTyping(); SetBusy(false); runningQuestion = ""; runningCommand = null; } }); }
     }
     /// <summary>One-shot structured choice for auto mode; never touches the visible conversation.</summary>
     /// <summary>Last question and answer, used as planner context for auto decisions.</summary>
@@ -437,7 +443,7 @@ internal sealed class ChatPanel : IDisposable
         if (!busy) return;
         cancelRequested = true;
         requestNumber++; // Suppress a reply already queued for the next game frame as well.
-        conversation.Cancel(); probe?.Cancel(); info.Text = "正在取消请求…";
+        conversation.Cancel(); probe?.Cancel(); info.Text = runningCommand?.HasSubmitted == true ? "正在停止后续操作，已提交的点击不会撤销。" : "正在取消请求…";
     }
     private void SetBusy(bool value)
     {

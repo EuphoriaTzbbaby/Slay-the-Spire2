@@ -29,6 +29,7 @@ internal sealed class CompanionPanel
     private Button autoToggle = null!;
     private bool autoEnabled;
     private CancellationTokenSource? autoCts;
+    private long autoRequest;
     private string autoPending = "";
     private string[] autoPendingIds = [];
     private readonly HashSet<string> autoSelectedIds = [];
@@ -92,7 +93,7 @@ internal sealed class CompanionPanel
     private bool f9Down;
     private bool wDown;
     private double lastWTap = -10;
-    private string message = "只读建议：不会自动出牌，自动执行交给求解器。";
+    private string message = "可用文字或语音下达战斗外指令；完成当前选择后停下。";
 
     public CompanionPanel(SceneTree tree)
     {
@@ -173,6 +174,7 @@ internal sealed class CompanionPanel
         UiStyle.Secondary(autoToggle); UiStyle.Size(autoToggle, 44);
         controlCard.AddChild(autoToggle);
         controlCard.AddChild(UiStyle.Hint("开启后由模型在奖励结算/休息点/商店/选牌/事件/地图/遗物/宝箱里选一项并执行，同一界面状态只操作一次（选牌会自动确认）；战斗仍归求解器。发消息或取消会暂停自动，点「恢复自动执行」继续。"));
+        controlCard.AddChild(UiStyle.Hint("单次指令无需开启自动：直接说「帮我选一张牌」「这里休息」「买这件商品」。按当前界面选择并点击后停止；问「哪张更好」只给建议。「暂停所有本模块动作」或语音「暂停」可取消尚未执行的操作。"));
         resumeAuto = new Button { Text = "恢复自动执行", Visible = false };
         resumeAuto.Pressed += ResumeAuto;
         UiStyle.Primary(resumeAuto); UiStyle.Size(resumeAuto, 42);
@@ -262,7 +264,7 @@ internal sealed class CompanionPanel
         chat.UserSaid += text =>
         {
             if (!chat.IsSubmittingVoice) { voiceInputs.Clear(); interruptedVoiceQuestion = ""; }
-            NoteDirective(text);
+            NoteDirective(text, chat.IsCommandRequest);
         };
         planLabel = new Label { Text = "本局计划：未设置", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         planLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
@@ -349,6 +351,7 @@ internal sealed class CompanionPanel
         autoWait = Math.Max(0, autoWait - delta);
         solverRetry = Math.Max(0, solverRetry - delta);
         quipCooldown = Math.Max(0, quipCooldown - delta);
+        if (!autoEnabled || autoSuspended || chat.Busy) pendingShopId = "";
         if (pendingShopId.Length > 0)
         {
             pendingShopWait -= delta;
@@ -690,10 +693,12 @@ internal sealed class CompanionPanel
     /// <summary>Any interruption hands control back to the player until they explicitly resume.</summary>
     private void SuspendAuto(string why)
     {
+        autoRequest++;
+        autoCts?.Cancel();
+        pendingShopId = "";
         if (!autoEnabled || autoSuspended) return;
         autoSuspended = true;
         solverSuspended = true;
-        autoCts?.Cancel();
         autoPending = "";
         message = why;
         if (decisionStatus != null) decisionStatus.Text = why;
@@ -908,6 +913,7 @@ internal sealed class CompanionPanel
         switch (intent)
         {
             case "pause":
+                chat.Cancel();
                 if (autoEnabled) SuspendAuto("语音：已暂停自动操作，说「恢复」继续。");
                 if (SolverBridge.Owned) { solverSuspended = true; try { SolverBridge.StopOwned(); } catch (Exception e) { GD.PushError($"[SpireCompanion] voice_stop_solver: {e}"); } }
                 break;
@@ -958,6 +964,11 @@ internal sealed class CompanionPanel
 
     private void StopAuto()
     {
+        autoRequest++;
+        pendingShopId = "";
+        autoSelectPendingConfirm = false;
+        autoPendingIds = [];
+        autoSelectedIds.Clear();
         autoEnabled = false;
         if (autoToggle != null) autoToggle.Text = "局外自动操作：关";
         if (autoLabel != null) autoLabel.Text = "自动：关";
@@ -970,7 +981,7 @@ internal sealed class CompanionPanel
     /// <summary>Auto mode only ever acts on an executable screen, one decision per observed state.</summary>
     private void AutoStep(GameSnapshot next)
     {
-        if (!autoEnabled || autoSuspended || SolverBridge.Owned) return;
+        if (!autoEnabled || autoSuspended || chat.Busy || SolverBridge.Owned) return;
         if (autoPending.Length > 0 || autoWait > 0)
         {
             if (next.Room is { } waiting && waiting.Options.Length > 0)
@@ -1074,11 +1085,15 @@ internal sealed class CompanionPanel
         autoCts = new CancellationTokenSource();
         autoCts.CancelAfter(TimeSpan.FromSeconds(30));
         if (decisionStatus != null) decisionStatus.Text = "自动决策中…（模型可能需要几秒）";
-        _ = DecideAsync(next, room.Options, room.Required, lastDirective, plan.Describe(), chat.RecentExchange, autoCts.Token);
+        _ = DecideAsync(++autoRequest, next, room.Options, room.Required, lastDirective, plan.Describe(), chat.RecentExchange, autoCts.Token);
     }
 
-    private async Task DecideAsync(GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, string runPlan, string playerContext, CancellationToken token)
+    private async Task DecideAsync(long number, GameSnapshot snapshot, RoomOptionView[] options, int required, string directive, string runPlan, string playerContext, CancellationToken token)
     {
+        void Deliver(Action action) => mainQueue.Enqueue(() =>
+        {
+            if (number == autoRequest && autoEnabled && !autoSuspended && !chat.Busy) action();
+        });
         var ids = options.Select(option => option.Id).ToArray();
         for (int attempt = 0; attempt < 2; attempt++)
         {
@@ -1095,7 +1110,7 @@ internal sealed class CompanionPanel
                         if (remaining.Length > 0)
                             ranked = await CompleteMultiPick(snapshot, remaining, required - ranked.Length, ranked, token, runPlan).ConfigureAwait(false);
                     }
-                    mainQueue.Enqueue(() => ApplyAuto(snapshot, ranked, reason));
+                    Deliver(() => ApplyAuto(snapshot, ranked, reason));
                     return;
                 }
                 // One retry: a malformed reply is usually noise, not a broken config.
@@ -1103,7 +1118,7 @@ internal sealed class CompanionPanel
             }
             catch (OperationCanceledException)
             {
-                mainQueue.Enqueue(() => StopAutoWith("自动决策超时，已停止自动操作。可以手动点，或重新开启。"));
+                Deliver(() => StopAutoWith("自动决策超时，已停止自动操作。可以手动点，或重新开启。"));
                 return;
             }
             catch (Exception error)
@@ -1114,11 +1129,11 @@ internal sealed class CompanionPanel
                     continue;
                 }
                 GD.PushError($"[SpireCompanion] auto_failed error={error.Message}");
-                mainQueue.Enqueue(() => StopAutoWith($"自动决策失败：{error.Message}"));
+                Deliver(() => StopAutoWith($"自动决策失败：{error.Message}"));
                 return;
             }
         }
-        mainQueue.Enqueue(() => StopAutoWith("自动决策两次都没给出合法选项，已停止自动操作。"));
+        Deliver(() => StopAutoWith("自动决策两次都没给出合法选项，已停止自动操作。"));
     }
 
     private async Task<string[]> CompleteMultiPick(GameSnapshot snapshot, RoomOptionView[] remaining, int need,
@@ -1155,7 +1170,7 @@ internal sealed class CompanionPanel
     private void ApplyAuto(GameSnapshot snapshot, string[] ids, string reason)
     {
         autoPending = "";
-        if (!autoEnabled) return;
+        if (!autoEnabled || autoSuspended || chat.Busy) return;
         var id = ids.Length > 0 ? ids[0] : null;
         autoPendingIds = ids.Length > 1 ? ids[1..] : [];
         if (id == null)
@@ -1492,8 +1507,9 @@ internal sealed class CompanionPanel
         });
     }
 
-    private void NoteDirective(string text)
+    private void NoteDirective(string text, bool immediate)
     {
+        if (immediate) { pinnedName = lastDirective = ""; return; }
         lastDirective = text.Length > 80 ? text[..80] : text;
         if (plan.UpdateFrom(text))
         {
@@ -1669,7 +1685,7 @@ internal sealed class CompanionPanel
             AutoStep(next);
             ProactiveStep(next);
             SyncPlan(next);
-            stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "只读建议";
+            stateLabel.Text = SolverBridge.Owned ? "求解器接管" : RoomCommand.CanOffer(next) ? "指令待命" : "文字建议";
             stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : UiStyle.Good);
             status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n阶段：{(next.CanEndTurn ? "可操作" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
             solverStart.Disabled = !solver.Available || solver.FullAuto || solver.Deploying || SolverBridge.Owned || !SolverBridge.CanStart;
