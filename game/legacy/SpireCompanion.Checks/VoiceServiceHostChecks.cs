@@ -8,6 +8,11 @@ internal static class VoiceServiceHostChecks
 {
     public static async Task FixtureAsync(string[] args)
     {
+        if (args[0] == "--voice-host-denied-fixture")
+        {
+            Console.Error.WriteLine("SPIRE_VOICE_ERROR:microphone_permission_denied");
+            return;
+        }
         var port = int.Parse(args[Array.IndexOf(args, "--port") + 1]);
         var path = args[Array.IndexOf(args, "--token-file") + 1];
         File.WriteAllText(path + ".pid", Environment.ProcessId.ToString());
@@ -29,16 +34,33 @@ internal static class VoiceServiceHostChecks
             var python = Path.Combine(directory, "python fixture");
             var script = Path.Combine(directory, "voice fixture.py");
             File.WriteAllText(python, "fixture"); File.WriteAllText(script, "fixture");
-            File.WriteAllText(Path.Combine(directory, "voice-launch.json"), JsonSerializer.Serialize(new { Python = python, Script = script, Model = model }));
+            string Helper(string parent)
+            {
+                var app = Path.Combine(parent, "SpireVoice.app");
+                Directory.CreateDirectory(Path.Combine(app, "Contents", "MacOS"));
+                Directory.CreateDirectory(Path.Combine(app, "Contents", "Resources"));
+                File.WriteAllText(Path.Combine(app, "Contents", "MacOS", "SpireVoice"), "fixture");
+                File.WriteAllText(Path.Combine(app, "Contents", "Resources", "runner.json"), "{}");
+                return app;
+            }
+            var helper = Helper(directory);
+            Directory.CreateDirectory(Path.Combine(directory, "macos"));
+            var bridge = Path.Combine(directory, "macos", "launch.py");
+            File.WriteAllText(bridge, "fixture");
+            File.WriteAllText(Path.Combine(directory, "voice-launch.json"), JsonSerializer.Serialize(new { Python = python, Script = script, Model = model, MacApp = helper }));
             var local = VoiceLaunchPlan.Discover(directory);
-            Require(local.Executable == python && local.Arguments.SequenceEqual(new[] { script, "--model", model }));
+            Require(OperatingSystem.IsMacOS()
+                ? local.Executable == python && local.Arguments.SequenceEqual(new[] { bridge, "--app", helper })
+                : local.Executable == python && local.Arguments.SequenceEqual(new[] { script, "--model", model }));
             var runtime = Path.Combine(directory, "voice");
             var packagedModel = Path.Combine(runtime, "models", "vosk-model-small-cn-0.22", "am");
             Directory.CreateDirectory(packagedModel);
             var executable = Path.Combine(runtime, OperatingSystem.IsWindows() ? "spire-voice.exe" : "spire-voice");
             File.WriteAllText(executable, "fixture");
             File.WriteAllText(Path.Combine(packagedModel, "final.mdl"), "fixture");
-            Require(VoiceLaunchPlan.Discover(directory).Executable == executable);
+            Helper(runtime);
+            File.WriteAllText(Path.Combine(runtime, "spire-voice-launch"), "fixture");
+            Require(VoiceLaunchPlan.Discover(directory).Executable == (OperatingSystem.IsMacOS() ? Path.Combine(runtime, "spire-voice-launch") : executable));
             File.Delete(Path.Combine(packagedModel, "final.mdl"));
             bool missing = false;
             try { VoiceLaunchPlan.Discover(directory); } catch (FileNotFoundException) { missing = true; }
@@ -46,12 +68,12 @@ internal static class VoiceServiceHostChecks
             Console.WriteLine("PASS Voice discovers bundled runtime or local development paths and rejects a missing model");
 
             string tokenFile = Path.Combine(directory, "会话 with spaces.json");
-            VoiceLaunchPlan Fixture(bool wait = false)
+            VoiceLaunchPlan Fixture(bool wait = false, bool denied = false)
             {
                 var program = Environment.ProcessPath!;
                 string[] arguments = Path.GetFileNameWithoutExtension(program).Equals("dotnet", StringComparison.OrdinalIgnoreCase)
                     ? [typeof(VoiceServiceHostChecks).Assembly.Location] : [];
-                return new(program, [.. arguments, wait ? "--voice-host-wait-fixture" : "--voice-host-fixture"], directory);
+                return new(program, [.. arguments, denied ? "--voice-host-denied-fixture" : wait ? "--voice-host-wait-fixture" : "--voice-host-fixture"], directory);
             }
             using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var port = FreePort();
@@ -103,7 +125,20 @@ internal static class VoiceServiceHostChecks
                 await child.WaitForExitAsync(limit.Token);
             }
             Console.WriteLine("PASS Closing during voice preparation cancels promptly and disposal releases the waiting child");
-            return 4;
+            int deniedLaunches = 0;
+            using (var denied = new VoiceServiceHost(() => { deniedLaunches++; return Fixture(denied: true); }))
+            {
+                for (var attempt = 0; attempt < 2; attempt++)
+                {
+                    bool explained = false;
+                    try { await denied.EnsureRunningAsync(FreePort(), tokenFile, limit.Token); }
+                    catch (IOException e) { explained = e.Message.Contains("麦克风权限未允许"); }
+                    Require(explained);
+                }
+                Require(deniedLaunches == 1);
+            }
+            Console.WriteLine("PASS Denied microphone permission stays explicit and does not relaunch the consent app automatically");
+            return 5;
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

@@ -15,7 +15,8 @@ public sealed record VoiceLaunchPlan(string Executable, string[] Arguments, stri
         {
             var model = Path.Combine(runtime, "models", "vosk-model-small-cn-0.22");
             RequireModel(model);
-            return new(executable, ["--model", model], runtime);
+            return OperatingSystem.IsMacOS() ? MacApp(Path.Combine(runtime, "SpireVoice.app"), Path.Combine(runtime, "spire-voice-launch"), [])
+                : new(executable, ["--model", model], runtime);
         }
         var config = Path.Combine(modDirectory, "voice-launch.json");
         if (File.Exists(config))
@@ -26,7 +27,11 @@ public sealed record VoiceLaunchPlan(string Executable, string[] Arguments, stri
                 Path.IsPathFullyQualified(local.Script) && File.Exists(local.Script) && Path.IsPathFullyQualified(local.Model))
             {
                 RequireModel(local.Model);
-                return new(local.Python, [local.Script, "--model", local.Model], Path.GetDirectoryName(local.Script)!);
+                var bridge = Path.Combine(Path.GetDirectoryName(local.Script)!, "macos", "launch.py");
+                if (OperatingSystem.IsMacOS() && !File.Exists(bridge))
+                    throw new FileNotFoundException("macOS 语音启动组件缺失，请重新安装 Mod。");
+                return OperatingSystem.IsMacOS() ? MacApp(local.MacApp, local.Python, [bridge])
+                    : new(local.Python, [local.Script, "--model", local.Model], Path.GetDirectoryName(local.Script)!);
             }
         }
         throw new FileNotFoundException("语音组件未就绪，请重新安装含语音组件的版本；仍可使用文字聊天。");
@@ -38,7 +43,17 @@ public sealed record VoiceLaunchPlan(string Executable, string[] Arguments, stri
             throw new FileNotFoundException("中文识别模型缺失，请修复语音组件后重试。");
     }
 
-    private sealed record DevelopmentVoice(string Python, string Script, string Model);
+    private static VoiceLaunchPlan MacApp(string? app, string launcher, string[] prefix)
+    {
+        if (string.IsNullOrEmpty(app) || !Path.IsPathFullyQualified(app) ||
+            !File.Exists(Path.Combine(app, "Contents", "MacOS", "SpireVoice")) ||
+            !File.Exists(Path.Combine(app, "Contents", "Resources", "runner.json")) || !File.Exists(launcher))
+            throw new FileNotFoundException("macOS 语音组件需要独立的麦克风授权应用，请重新安装 Mod 后再开启语音。");
+        // LaunchServices must establish a separate app identity. Direct exec inherits the game's denied consent.
+        return new(launcher, [.. prefix, "--app", app], Path.GetDirectoryName(app)!);
+    }
+
+    private sealed record DevelopmentVoice(string Python, string Script, string Model, string? MacApp = null);
 }
 
 /// <summary>Owns only the child it launches. Closing chat leaves its model warm, with no microphone.</summary>
@@ -49,8 +64,9 @@ public sealed class VoiceServiceHost(Func<VoiceLaunchPlan> resolve) : IDisposabl
     private Process? process;
     private bool disposed;
     private int launches;
+    private volatile string? startupError;
 
-    public void BeginSession() { lock (sync) launches = 0; }
+    public void BeginSession() { lock (sync) { launches = 0; startupError = null; } }
 
     public async Task EnsureRunningAsync(int port, string tokenFile, CancellationToken cancel)
     {
@@ -65,6 +81,7 @@ public sealed class VoiceServiceHost(Func<VoiceLaunchPlan> resolve) : IDisposabl
             {
                 ObjectDisposedException.ThrowIf(disposed, this);
                 cancel.ThrowIfCancellationRequested();
+                    if (startupError != null) throw new IOException(startupError);
                 if (process is not { HasExited: false })
                 {
                     process?.Dispose();
@@ -86,7 +103,15 @@ public sealed class VoiceServiceHost(Func<VoiceLaunchPlan> resolve) : IDisposabl
                     launches++;
                     // Drain output without putting audio text or local credentials into game logs.
                     process.OutputDataReceived += (_, _) => { };
-                    process.ErrorDataReceived += (_, _) => { };
+                    var launched = process;
+                    process.ErrorDataReceived += (_, line) =>
+                    {
+                        if (!ReferenceEquals(process, launched)) return;
+                        if (line.Data == "SPIRE_VOICE_ERROR:microphone_permission_denied")
+                            startupError = "麦克风权限未允许：请在系统设置 → 隐私与安全性 → 麦克风中允许「尖塔语音 / Spire Voice」，然后重新开启语音。";
+                        else if (line.Data == "SPIRE_VOICE_ERROR:invalid_installation")
+                            startupError = "语音启动配置失效，请重新安装语音组件。";
+                    };
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
                 }
@@ -101,7 +126,10 @@ public sealed class VoiceServiceHost(Func<VoiceLaunchPlan> resolve) : IDisposabl
                 {
                     ObjectDisposedException.ThrowIf(disposed, this);
                     if (owned.HasExited)
-                        throw new IOException("语音组件启动失败，请检查语音安装是否完整后重新开启。");
+                    {
+                        owned.WaitForExit(); // Flush only the known error markers; never log arbitrary child output.
+                        throw new IOException(startupError ?? "语音组件启动失败，请检查语音安装是否完整后重新开启。");
+                    }
                 }
                 if (await ReachableAsync(port, cancel).ConfigureAwait(false)) return;
                 await Task.Delay(100, cancel).ConfigureAwait(false);

@@ -32,6 +32,10 @@ Windows 可将 `python3` 换成 `python`。脚本建立 `voice/.venv`、安装�
 
 准备完成后重新执行 `python3 scripts/game_dev.py install`。安装器会在本机 Mod 目录生成 `voice-launch.json`，引用当前虚拟环境、入口和模型；它不入库、不进入玩家包。此后 QQ 自动启动服务，日常无需终端。`voice_dev.py run` 仅保留给语音组独立调试。更新后重启游戏即可让游戏自启的服务使用新版代码。
 
+macOS 开发机安装还会用 Xcode Command Line Tools 编译本机 `.local/voice-macos/SpireVoice.app`。游戏通过独立应用「尖塔语音 / Spire Voice」申请麦克风权限；首次授权后才启动后端。拒绝时图标显示不可用并提示系统设置的位置。项目在移动硬盘上时，系统也可能询问读取该磁盘的权限，以加载代码和模型。应用保留系统正常授权流程，不修改游戏签名或系统权限库。私有 FIFO 把游戏的退出传递给独立应用和 Python，正常退出或游戏崩溃都应回收；关闭 QQ 只停止麦克风并保留模型。
+
+2026-11-04 实机排查发现：游戏原本没有声明麦克风采集能力，直接从游戏启动 Python 会被 macOS 拒绝，即使 PortAudio 返回启动成功、图标变绿，也可能没有真实输入。独立终端测试通过不能替代此路径的验收。独立应用的系统授权身份、真实模型加载、鉴权和父管道 EOF 后退出已验证；游戏内真人切句仍需单独记录。
+
 正式玩家包应包含 `SpireCompanion/voice/spire-voice.exe`（Windows）及其依赖、`voice/models/vosk-model-small-cn-0.22/` 模型。Mod 优先使用附带的运行时，不依赖系统 Python。语音组交付同平台可执行目录后，用 `python3 scripts/package_release.py --voice-runtime <目录>` 打包；当前未产出并验收 Windows 语音二进制，不把纯文字包描述成免 Python 语音包。
 
 ## 先检查输入，再进入游戏

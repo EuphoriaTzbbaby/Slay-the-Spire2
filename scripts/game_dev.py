@@ -3,6 +3,7 @@ from pathlib import Path
 import argparse
 import json
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,50 @@ ROOT = Path(__file__).resolve().parents[1]
 GAME = ROOT / 'game' / 'legacy'
 APP = Path.home() / 'Library/Application Support/Steam/steamapps/common/Slay the Spire 2/SlayTheSpire2.app'
 DEFAULT_DATA = APP / 'Contents/Resources/data_sts2_macos_arm64'
+
+
+def build_macos_voice_helper(config):
+    """Build a separate app so microphone consent belongs to voice, not the game."""
+    staging = ROOT / '.local/voice-macos'
+    staging.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='build-', dir=staging) as temporary:
+        bundle = Path(temporary) / 'SpireVoice.app'
+        contents = bundle / 'Contents'
+        (contents / 'MacOS').mkdir(parents=True)
+        (contents / 'Resources').mkdir()
+        (contents / 'Info.plist').write_bytes(plistlib.dumps({
+            'CFBundleIdentifier': 'org.spirecompanion.voice',
+            'CFBundleExecutable': 'SpireVoice', 'CFBundleName': 'Spire Voice',
+            'CFBundleDisplayName': '尖塔语音', 'CFBundlePackageType': 'APPL',
+            'CFBundleVersion': '1', 'LSUIElement': True,
+            'NSMicrophoneUsageDescription': '开启语音聊天后，将你的说话在本机转成文字交给游戏；关闭语音即停止采集。',
+        }))
+        runner = {'Executable': config['Python'],
+                  'Arguments': [config['Script'], '--model', config['Model']],
+                  'WorkingDirectory': str(Path(config['Script']).parent)}
+        (contents / 'Resources/runner.json').write_text(json.dumps(runner, ensure_ascii=False), encoding='utf-8')
+        subprocess.run(['xcrun', 'clang', '-fobjc-arc', '-fblocks', '-O2',
+                        '-framework', 'Foundation', '-framework', 'AVFoundation',
+                        str(ROOT / 'voice/macos/VoiceLauncher.m'),
+                        '-o', str(contents / 'MacOS/SpireVoice')], check=True)
+        entitlements = Path(temporary) / 'entitlements.plist'
+        entitlements.write_bytes(plistlib.dumps({'com.apple.security.device.audio-input': True}))
+        subprocess.run(['/usr/bin/codesign', '--force', '--sign', '-', '--options', 'runtime',
+                        '--entitlements', str(entitlements), str(bundle)], check=True)
+        subprocess.run(['/usr/bin/codesign', '--verify', '--strict', str(bundle)], check=True)
+        target = staging / 'SpireVoice.app'
+        previous = staging / 'SpireVoice.previous.app'
+        if previous.exists():
+            shutil.rmtree(previous)
+        if target.exists():
+            target.rename(previous)
+        try:
+            bundle.rename(target)
+        except BaseException:
+            if previous.exists():
+                previous.rename(target)
+            raise
+    return target
 
 
 def build(data):
@@ -31,6 +76,14 @@ def install(mods):
     sources = [output / 'SpireCompanion.dll', output / 'SpireCompanion.json', ROOT / 'LICENSE']
     if any(not source.is_file() for source in sources):
         raise SystemExit('Build successfully before install.')
+    python = ROOT / 'voice/.venv' / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python')
+    script = ROOT / 'voice/voice_service.py'
+    model = ROOT / 'voice/models/vosk-model-small-cn-0.22'
+    launch_config = None
+    if python.is_file() and script.is_file() and (model / 'am/final.mdl').is_file():
+        launch_config = {'Python': str(python), 'Script': str(script), 'Model': str(model)}
+        if sys.platform == 'darwin':
+            launch_config['MacApp'] = str(build_macos_voice_helper(dict(launch_config)))
     destination = mods / 'SpireCompanion'
     if destination.exists():
         if not destination.is_dir() or destination.is_symlink():
@@ -52,14 +105,10 @@ def install(mods):
             if os.path.exists(temporary):
                 os.unlink(temporary)
     # Local development wiring stays on this machine, never in the release zip or Git.
-    python = ROOT / 'voice/.venv' / ('Scripts/python.exe' if sys.platform == 'win32' else 'bin/python')
-    script = ROOT / 'voice/voice_service.py'
-    model = ROOT / 'voice/models/vosk-model-small-cn-0.22'
-    if python.is_file() and script.is_file() and (model / 'am/final.mdl').is_file():
+    if launch_config:
         config = destination / 'voice-launch.json'
         temporary = config.with_suffix('.json.tmp')
-        temporary.write_text(json.dumps({'Python': str(python), 'Script': str(script), 'Model': str(model)},
-                                        ensure_ascii=False), encoding='utf-8')
+        temporary.write_text(json.dumps(launch_config, ensure_ascii=False), encoding='utf-8')
         os.replace(temporary, config)
         print('Local voice launch configured: QQ starts the service without a terminal.')
     elif not (destination / 'voice').is_dir():

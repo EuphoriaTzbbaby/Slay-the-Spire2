@@ -771,6 +771,7 @@ internal sealed class CompanionPanel
     private void UpdateVoiceHud()
     {
         voiceHud?.SetState(!voiceChatActive ? VoiceHudState.Off
+            : voice.HasError ? VoiceHudState.Unavailable
             : !voice.IsConnected || voiceStartingSession.Length > 0 ? VoiceHudState.Connecting
             : voice.IsListening ? VoiceHudState.Listening : VoiceHudState.Unavailable);
     }

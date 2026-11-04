@@ -28,6 +28,7 @@ internal sealed class VoiceClient
 
     private CancellationTokenSource? lifetime;
     private Connection? current;
+    private volatile string? connectionError;
     public event Action<string>? StatusChanged;
     public event Action<string>? Connected;
     public event Action<string>? InputStarted;
@@ -35,6 +36,7 @@ internal sealed class VoiceClient
     public event Action<string, string, string>? IntentReceived;
     public bool Running => lifetime is { IsCancellationRequested: false };
     public bool IsConnected => current is { Ready: true };
+    public bool HasError => connectionError != null || current?.LastError != null;
     public bool IsListening => current is { Ready: true, Listening: "continuous" or "listening" or "recognizing" };
     public string SessionId => current is { Ready: true } connection ? connection.SessionId : "";
 
@@ -48,6 +50,7 @@ internal sealed class VoiceClient
 
     public void Stop()
     {
+        connectionError = null;
         var previous = Interlocked.Exchange(ref lifetime, null);
         try { previous?.Cancel(); } catch (ObjectDisposedException) { }
         var connection = Interlocked.Exchange(ref current, null);
@@ -125,6 +128,7 @@ internal sealed class VoiceClient
                     await RequestAsync(connection, "service.status", new { }, connected.Token).ConfigureAwait(false);
                     if (!ReferenceEquals(lifetime, owner)) return;
                     connection.Ready = true;
+                    connectionError = null;
                     delay = 1;
                     StatusChanged?.Invoke("语音服务已连接。");
                     Connected?.Invoke(connection.SessionId);
@@ -134,7 +138,11 @@ internal sealed class VoiceClient
                 catch (OperationCanceledException) when (owner.IsCancellationRequested) { break; }
                 catch (Exception error)
                 {
-                    if (ReferenceEquals(lifetime, owner)) StatusChanged?.Invoke("连接中断，将重试：" + error.Message);
+                    if (ReferenceEquals(lifetime, owner))
+                    {
+                        connectionError = error.Message;
+                        StatusChanged?.Invoke("语音未就绪：" + error.Message);
+                    }
                 }
                 finally
                 {

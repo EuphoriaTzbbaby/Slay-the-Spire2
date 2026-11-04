@@ -1,6 +1,6 @@
 using SpireCompanion.Core;
 
-if (args.Length > 0 && args[0] is "--voice-host-fixture" or "--voice-host-wait-fixture")
+if (args.Length > 0 && args[0] is "--voice-host-fixture" or "--voice-host-wait-fixture" or "--voice-host-denied-fixture")
 {
     await VoiceServiceHostChecks.FixtureAsync(args);
     return;

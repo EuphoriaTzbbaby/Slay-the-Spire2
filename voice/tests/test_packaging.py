@@ -57,10 +57,18 @@ class PackagingTests(unittest.TestCase):
         (model / 'am/final.mdl').write_text('fixture model')
         mods = self.root / 'mods'
         mods.mkdir()
-        with patch.multiple(developer, ROOT=self.root, GAME=self.game):
+        helper = self.root / '独立语音.app'
+        with patch.multiple(developer, ROOT=self.root, GAME=self.game), \
+                patch.object(developer, 'build_macos_voice_helper', return_value=helper) as build_helper:
             target = developer.install(mods)
         config = json.loads((target / 'voice-launch.json').read_text())
-        self.assertEqual(config, {'Python': str(python), 'Script': str(entry), 'Model': str(model)})
+        expected = {'Python': str(python), 'Script': str(entry), 'Model': str(model)}
+        if sys.platform == 'darwin':
+            build_helper.assert_called_once_with(expected)
+            expected['MacApp'] = str(helper)
+        else:
+            build_helper.assert_not_called()
+        self.assertEqual(config, expected)
         self.assertFalse((target / 'voice/.venv').exists())
 
     def test_release_without_runtime_explicitly_describes_text_only(self):
