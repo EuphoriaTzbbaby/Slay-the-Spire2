@@ -44,6 +44,13 @@ public sealed class ChatClient : IDisposable
         RoomCommandSession? actions = null)
     {
         if (string.IsNullOrWhiteSpace(question) || question.Length > 4000) throw new ArgumentException("请输入 1 到 4000 字的消息。");
+        if (RoomCommand.IsRequested(question) && actions == null)
+            return "本次未执行点击：当前没有可用的游戏操作入口，或游戏正在结算/由求解器接管。请先让目标控件显示，再下达指令。";
+        if (actions != null && RoomCommand.NamedUiTarget(snapshot, question) is { } namedId)
+        {
+            var outcome = await actions.ExecuteAsync(JsonSerializer.Serialize(new { id = namedId }), cancellation).ConfigureAwait(false);
+            return actions.HasSubmitted ? actions.Receipt : "本次未执行点击：" + OutcomeMessage(outcome);
+        }
         var verbosity = Personality.Instructions(settings.TalkMode);
         var messages = new List<object>
         {
@@ -55,7 +62,7 @@ public sealed class ChatClient : IDisposable
                 "涉及游戏玩法时，按当前角色机制给建议，不确定的机制以状态与工具查询为准。" +
                 CharacterGuidance.For(snapshot.Character) + verbosity +
                 (actions == null ? "你当前只提供文字建议，没有执行游戏动作的权限。不要宣称已买牌、用药或出牌。" :
-                    "本轮玩家明确下达了战斗外操作指令，你可以调用 choose_room_option，从本轮 Room.Options 中决定并执行一次选择。" +
+                    "本轮玩家明确下达了游戏操作指令，你可以调用 choose_room_option，从本轮 Room.Options 中决定并执行一次选择或点击。主菜单、设置等 UI 也可以操作。" +
                     "优先服从玩家本轮要求，结合当前卡组、资源和计划决定；不要只口头说做了而不调用工具。" +
                     "只完成当前界面的指令；一次指令结束即停，不接管后续房间。选牌传足 Required 个不同 ids，服务会尝试确认。" +
                     "若目标不在当前可用选项里，或指令含糊、否定、只是询问建议，就说明情况而不点击。不要为了凑选项执行另一个动作。" +
@@ -99,17 +106,19 @@ public sealed class ChatClient : IDisposable
         {
             reply = await AskWithToolsAsync(settings, apiKey, messages, cancellation, toolExecutor, toolTrace, actions).ConfigureAwait(false);
         }
+        // Only the dispatcher can report an action outcome; model prose is never evidence of a click.
+        if (actions != null) return actions.HasSubmitted ? actions.Receipt : actions.Outcome is { } outcome
+            ? "本次未执行点击：" + outcome.Message
+            : "本次未点击游戏选项。请明确说要点击的按钮名称，或指定当前选项；模型文字不代表已执行。";
         var grounding = AnswerGrounding.Check(reply, snapshot);
-        string WithOutcome(string answer) => actions == null ? answer :
-            (actions.HasSubmitted ? actions.Receipt : "本次未点击游戏选项。") + "\n" + answer;
-        if (grounding.Unknown.Length == 0) return WithOutcome(reply);
+        if (grounding.Unknown.Length == 0) return reply;
         // One corrective retry: the answer named things that are not on this screen.
         messages.Add(new { role = "assistant", content = reply });
         messages.Add(new { role = "user", content =
             "校验失败：你提到了当前界面不存在的名称：" + string.Join("、", grounding.Unknown) +
             "。请只使用本轮 snapshot 中出现的卡牌/选项名称重新回答，不要提及这些名称。" });
         messages.Add(new { role = "user", content = question });
-        return WithOutcome(await PostAsync(settings, apiKey, messages, cancellation).ConfigureAwait(false));
+        return await PostAsync(settings, apiKey, messages, cancellation).ConfigureAwait(false);
     }
 
     /// <summary>Structured choice for auto-execution: the reply must name one of the offered ids.</summary>
@@ -147,7 +156,13 @@ public sealed class ChatClient : IDisposable
             new { scope = new { type = "string", description = "screen/hand/deck/relics/potions/enemies/run/map/all" } }, "scope")
     ];
 
-    private static readonly object CommandTool = Function("choose_room_option", "按玩家本轮指令执行当前战斗外界面的一次选择；不会连续托管。",
+    private static string OutcomeMessage(string result)
+    {
+        using var json = JsonDocument.Parse(result);
+        return json.RootElement.GetProperty("message").GetString() ?? "游戏未确认操作。";
+    }
+
+    private static readonly object CommandTool = Function("choose_room_option", "按玩家本轮指令选择或点击当前游戏控件，包括主菜单和设置；不会连续托管。",
         new { id = new { type = "string", description = "当前 Room.Options 的可用 id；多选时填第一个" },
             ids = new { type = "array", items = new { type = "string" }, minItems = 1, maxItems = 10,
                 description = "仅多选牌时提供，必须给足 Required 个不同的可用 id" } }, "id");
@@ -189,6 +204,8 @@ public sealed class ChatClient : IDisposable
                         : "不支持该工具，未执行。";
                 toolTrace?.Invoke($"{call.Name}({call.Argument}) -> {(result.Length > 60 ? result[..60] : result)}");
                 messages.Add(new { role = "tool", tool_call_id = call.Id, content = result });
+                if (call.Name == "choose_room_option" && actions != null)
+                    return actions.HasSubmitted ? actions.Receipt : "本次未执行点击：" + OutcomeMessage(result);
             }
         }
         if (actions?.HasSubmitted == true) return actions.Receipt;

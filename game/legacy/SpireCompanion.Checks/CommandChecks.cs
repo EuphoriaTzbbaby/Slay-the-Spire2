@@ -104,19 +104,18 @@ internal static class CommandChecks
             var answer = await client.AskAsync(Settings, "", "这里休息", State, [], default, actions: unavailable);
             Require(!unavailable.HasSubmitted && answer.StartsWith("本次未点击"));
         }
-        Pass("Providers without tools fall back to advice and clearly report no click");
+        Pass("Providers without tools clearly report no click");
 
         calls = 0;
         var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var committed = new RoomCommandSession(State, (_, record, _) =>
-        { record("已提交休息"); return Task.FromResult(new ActionOutcome(true, "已提交休息")); });
-        using (var client = new ChatClient(new Handler(async (_, token) =>
+        var committed = new RoomCommandSession(State, async (_, record, token) =>
         {
-            if (++calls == 1) return Tool("choose_room_option", "{\"id\":\"rest\"}");
+            record("已提交休息");
             waiting.TrySetResult();
             await Task.Delay(Timeout.Infinite, token);
-            return Reply("unreachable");
-        })))
+            return new ActionOutcome(true, "unreachable");
+        });
+        using (var client = new ChatClient(new Handler((_, _) => Task.FromResult(Tool("choose_room_option", "{\"id\":\"rest\"}")))))
         using (var conversation = new ChatConversation(client))
         {
             var pending = conversation.AskAsync(Settings, "", "这里休息", State, actions: committed);
@@ -128,7 +127,40 @@ internal static class CommandChecks
             Require(conversation.Last?.Answer == "已提交休息");
         }
         Pass("Cancelling or speaking after a submitted click retains the action in history instead of replaying it");
-        return 9;
+
+        var menu = State with { Room = new("Ui", "MainMenu", "菜单", [new("ui:1", "单人模式", "按钮", false), new("ui:2", "设置", "按钮", false)]) { Id = "menu" } };
+        Require(RoomCommand.CanOffer(menu));
+        Require(RoomCommand.NamedUiTarget(menu, "帮我点其单人模式") == "ui:1");
+        Require(RoomCommand.NamedUiTarget(menu, "单人模式是什么") == null);
+        Require(RoomCommand.NamedUiTarget(menu, "不要打开设置") == null);
+        Require(!RoomCommand.IsRequested("先别退出"));
+        Require(RoomCommand.NamedUiTarget(menu with { Room = menu.Room! with { Options = [new("ui:1", "设置", "", false), new("ui:2", "设置", "", false)] } }, "打开设置") == null);
+        Require(RoomCommand.CanOffer(menu with { CombatTurn = "1:Player", CanEndTurn = true }));
+        Pass("Observed UI controls cover menus and combat; exact names resolve only to a unique enabled target");
+
+        using (var client = new ChatClient(new Handler((_, _) => throw new Exception("Named button needs no model request"))))
+        {
+            var click = new RoomCommandSession(menu, (_, record, _) => { record("已点击单人模式，界面已更新。"); return Task.FromResult(new ActionOutcome(true, "已点击单人模式，界面已更新。")); });
+            Require((await client.AskAsync(Settings, "", "帮我点击单人模式", menu, [], default, actions: click)).Contains("界面已更新"));
+            var missingButton = await client.AskAsync(Settings, "", "帮我点击单人模式", menu with { Room = null }, [], default);
+            Require(missingButton.StartsWith("本次未执行"));
+        }
+        Pass("Named menu clicks use the actual dispatcher; missing controls cannot produce a fabricated success");
+
+        using (var client = new ChatClient(new Handler((_, _) => Task.FromResult(Reply("你已经进入了单人模式。")))))
+        {
+            var never = new RoomCommandSession(menu, (_, _, _) => throw new Exception("No tool call was made"));
+            var answer = await client.AskAsync(Settings, "", "帮我选择一个模式", menu, [], default, actions: never);
+            Require(answer.StartsWith("本次未点击") && !answer.Contains("已经进入"));
+        }
+        using (var client = new ChatClient(new Handler((_, _) => Task.FromResult(Tool("choose_room_option", "{\"id\":\"ui:1\"}")))))
+        {
+            var rejected = new RoomCommandSession(menu, (_, _, _) => Task.FromResult(new ActionOutcome(false, "界面已变化，这条指令未执行。")));
+            var answer = await client.AskAsync(Settings, "", "帮我选择一个模式", menu, [], default, actions: rejected);
+            Require(answer.Contains("界面已变化") && !rejected.HasSubmitted);
+        }
+        Pass("A model claiming success without an actual tool result is replaced by an honest no-action receipt");
+        return 12;
     }
 
     private static void Require(bool value, string? detail = null) { if (!value) throw new Exception("Command check failed: " + detail); }

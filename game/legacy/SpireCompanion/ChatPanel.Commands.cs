@@ -35,6 +35,23 @@ internal sealed partial class ChatPanel
                 GD.Print($"[SpireCompanion] command_result kind={command.Snapshot.Room!.Kind} ids={string.Join(",", command.Ids)} submitted={outcome.Submitted}");
                 return outcome;
             }, token).ConfigureAwait(false);
+            if (result.Submitted && command.Ids[0].StartsWith("ui:", StringComparison.Ordinal))
+            {
+                for (int i = 0; i < 8; i++)
+                {
+                    await Task.Delay(100, token).ConfigureAwait(false);
+                    var changed = await CommandOnMainAsync(number, () => GameReader.ReadCommandSnapshot().Fingerprint != command.Snapshot.Fingerprint, token).ConfigureAwait(false);
+                    if (changed)
+                    {
+                        var text = "已点击「" + command.Snapshot.Room!.Options.First(option => option.Id == command.Ids[0]).Name + "」，点击后游戏界面已更新。";
+                        Record(text);
+                        return new(true, text);
+                    }
+                }
+                var unconfirmed = "已发送点击，但尚未观察到界面变化；不能确认操作成功，请查看游戏画面。";
+                Record(unconfirmed);
+                return new(true, unconfirmed);
+            }
             if (!result.Submitted || command.Snapshot.Room?.Kind != "Select" || command.Ids[0] == "confirm") return result;
             var clicked = new HashSet<ulong>();
             for (int step = 0; step < 15; step++)

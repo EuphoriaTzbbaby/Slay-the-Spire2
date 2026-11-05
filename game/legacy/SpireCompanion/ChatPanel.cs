@@ -111,7 +111,7 @@ internal sealed partial class ChatPanel : IDisposable
         buttons.AddChild(send); buttons.AddChild(advice); buttons.AddChild(cancel); buttons.AddChild(clear);
         cancel.Visible = false;
         chat.AddChild(buttons);
-        chat.AddChild(UiStyle.Hint("只提供建议，不会自动出牌、购物或用药。回复可能产生模型服务费用。"));
+        chat.AddChild(UiStyle.Hint("明确说「帮我点击…」可操作当前游戏界面，每次完成后停下；问建议不会点击。回复可能产生模型服务费用。"));
         chat.AddChild(info);
 
         send.Pressed += () => Begin(question.Text);

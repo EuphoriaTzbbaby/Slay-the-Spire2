@@ -15,16 +15,14 @@ internal static partial class GameReader
     public static bool CanExecuteCommand()
     {
         var manager = RunManager.Instance;
-        return manager.IsInProgress && manager.DebugOnlyGetState()?.Players.Count == 1 &&
-            !CombatManager.Instance.IsInProgress && manager.NetService?.IsGameLoading != true &&
-            !IsGameOver() && !SolverBridge.Owned;
+        return manager.NetService?.IsGameLoading != true && !SolverBridge.Owned;
     }
 
     // Supplement only chat's snapshot; do not change the existing automatic decision policy.
     public static GameSnapshot ReadCommandSnapshot()
     {
         var snapshot = Read();
-        if (snapshot.Room is not { } room) return snapshot;
+        if (snapshot.Room is not { } room) return AddUiTargets(snapshot);
         var options = room.Options.ToList();
         if (room.Kind == "Reward" && CanSkipReward()) options.Add(new("skip", "跳过卡牌奖励", "不拿牌，继续", false));
         if (room.Kind == "Select" && NOverlayStack.Instance?.Peek() is NCardGridSelectionScreen screen)
@@ -37,7 +35,7 @@ internal static partial class GameReader
                     holder.CardModel == null)).ToList();
             if (CanConfirmSelection()) options.Add(new("confirm", "确认当前选择", "确认界面里已经选中的牌", false));
         }
-        return snapshot with { Room = room with { Options = options.ToArray() } };
+        return AddUiTargets(snapshot with { Room = room with { Options = options.ToArray() } });
     }
 
     private static HashSet<CardModel>? SelectedCards(NCardGridSelectionScreen screen)
@@ -57,6 +55,9 @@ internal static partial class GameReader
         var names = string.Join("、", command.Ids.Select(id => room.Options.First(option => option.Id == id).Name));
         var receipt = $"已提交「{names}」的操作，等待游戏结算。";
         var id = command.Ids[0];
+        if (id.StartsWith("ui:", StringComparison.Ordinal)) return ClickUi(id, record);
+        if (CombatManager.Instance.IsInProgress || RunManager.Instance.DebugOnlyGetState()?.Players.Count != 1)
+            return new(false, "当前只能点击界面控件，不能使用此跑局操作。");
         if (room.Kind == "Select" && id != "confirm")
         {
             var screen = (NCardGridSelectionScreen)NOverlayStack.Instance!.Peek()!;

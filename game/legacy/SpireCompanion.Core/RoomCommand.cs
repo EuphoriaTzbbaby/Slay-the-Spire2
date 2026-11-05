@@ -7,15 +7,15 @@ namespace SpireCompanion.Core;
 public sealed record RoomCommand(GameSnapshot Snapshot, string[] Ids)
 {
     public static readonly IReadOnlySet<string> Kinds = new HashSet<string>
-        { "Reward", "Rest", "Shop", "Select", "Event", "Map", "Relic", "Rewards", "Treasure" };
+        { "Ui", "Reward", "Rest", "Shop", "Select", "Event", "Map", "Relic", "Rewards", "Treasure" };
 
-    public static bool CanOffer(GameSnapshot snapshot) => snapshot.CombatTurn == "无" &&
-        snapshot.Enemies.Length == 0 && !snapshot.CanEndTurn && snapshot.Room is { } room &&
+    public static bool CanOffer(GameSnapshot snapshot) => snapshot.Room is { } room &&
+        (room.Kind == "Ui" || snapshot.CombatTurn == "无" && snapshot.Enemies.Length == 0 && !snapshot.CanEndTurn) &&
         Kinds.Contains(room.Kind) && room.Options.Any(option => !option.Locked);
 
     public static RoomCommand Parse(GameSnapshot snapshot, string arguments)
     {
-        if (!CanOffer(snapshot)) throw new ArgumentException("当前不是可执行的战斗外界面。");
+        if (!CanOffer(snapshot)) throw new ArgumentException("当前界面没有可执行的选项。");
         using var json = JsonDocument.Parse(arguments);
         var data = json.RootElement;
         string[] ids = data.TryGetProperty("ids", out var list)
@@ -27,23 +27,31 @@ public sealed record RoomCommand(GameSnapshot Snapshot, string[] Ids)
             ids.Any(id => !snapshot.Room!.Options.Any(option => option.Id == id && !option.Locked)))
             throw new ArgumentException("只能选择当前界面可用且不重复的选项。");
         var room = snapshot.Room!;
-        var required = room.Kind == "Select" && !ids.Contains("confirm") ? Math.Max(1, room.Required) : 1;
+        var required = room.Kind == "Select" && !ids.Contains("confirm") && !ids.Any(id => id.StartsWith("ui:")) ? Math.Max(1, room.Required) : 1;
         if (ids.Length != required) throw new ArgumentException($"这次需要选择 {required} 项。");
         return new(snapshot, ids);
     }
 
     public string? ValidateCurrent(GameSnapshot current, bool available)
     {
-        if (!available || !CanOffer(current)) return "当前游戏不可操作，或已进入战斗。";
+        if (!available || !CanOffer(current)) return "当前游戏或目标控件不可操作。";
         if (Snapshot.Fingerprint != current.Fingerprint) return "界面或选项已变化，这条指令未执行；请根据新界面重新下达指令。";
         return null;
+    }
+
+    public static string? NamedUiTarget(GameSnapshot snapshot, string text)
+    {
+        if (!IsRequested(text)) return null;
+        var matches = snapshot.Room?.Options.Where(option => option.Id.StartsWith("ui:") && !option.Locked &&
+            option.Name.Length >= 2 && text.Contains(option.Name, StringComparison.Ordinal)).ToArray() ?? [];
+        return matches.Length == 1 ? matches[0].Id : null;
     }
 
     /// <summary>Only explicit imperatives expose the action tool. Advice and quoted examples remain read-only.</summary>
     public static bool IsRequested(string text)
     {
-        if (Regex.IsMatch(text, "(?:只|仅).{0,5}(?:分析|建议|解释|回答)|(?:不要|别|先别|不用).{0,4}(?:操作|执行|点击|帮我|替我|选|拿|买)|(?:帮我|替我)\\s*(?:别|不要|不用)|假如|假设|举例|这句话|翻译|复述|以后|下次")) return false;
-        const string verbs = "(?:选择|选|挑|拿|买|购买|升级|删|移除|变换|休息|锻造|走|前进|离开|跳过|领取|打开|关闭|确认|点击|点|决定|处理|执行)";
+        const string verbs = "(?:选择|选|挑|拿|买|购买|升级|删|移除|变换|休息|锻造|走|前进|离开|跳过|领取|打开|关闭|确认|点击|点|决定|处理|执行|进入|返回|退出|开始|继续|调高|调低)";
+        if (Regex.IsMatch(text, "(?:只|仅).{0,5}(?:分析|建议|解释|回答)|(?:不要|别|先别|不用).{0,4}(?:操作|帮我|替我|" + verbs + ")|(?:帮我|替我)\\s*(?:别|不要|不用)|假如|假设|举例|这句话|翻译|复述|以后|下次")) return false;
         const string questions = "怎么|如何|应该|要不要|值不值得|为什么|选哪|买哪|买什么|选什么|走哪|去哪里|好不好";
         if (Regex.IsMatch(text, "(?:帮我|替我|你来|我要你|让你|请你).{0,40}" + verbs) &&
             !Regex.IsMatch(text, questions)) return true;
@@ -58,8 +66,10 @@ public sealed class RoomCommandSession(GameSnapshot snapshot,
 {
     private int attempted;
     private string receipt = "";
+    private ActionOutcome? outcome;
     public bool HasSubmitted => Volatile.Read(ref receipt).Length > 0;
     public string Receipt => Volatile.Read(ref receipt);
+    public ActionOutcome? Outcome => Volatile.Read(ref outcome);
 
     public async Task<string> ExecuteAsync(string arguments, CancellationToken token)
     {
@@ -67,11 +77,15 @@ public sealed class RoomCommandSession(GameSnapshot snapshot,
         RoomCommand command;
         try { command = RoomCommand.Parse(snapshot, arguments); }
         catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException or KeyNotFoundException)
-        { return JsonSerializer.Serialize(new { submitted = false, message = "选项参数无效，未执行。" }); }
+        {
+            Volatile.Write(ref outcome, new(false, "选项参数无效，未执行。"));
+            return JsonSerializer.Serialize(new { submitted = false, message = "选项参数无效，未执行。" });
+        }
         if (Interlocked.Exchange(ref attempted, 1) != 0)
             return JsonSerializer.Serialize(new { submitted = false, message = "本条指令已处理，不重复点击，也不继续操作后续界面。", receipt = Receipt });
-        var outcome = await execute(command, value => Volatile.Write(ref receipt, value), token).ConfigureAwait(false);
-        if (outcome.Submitted) Volatile.Write(ref receipt, outcome.Message);
-        return JsonSerializer.Serialize(new { submitted = outcome.Submitted, message = outcome.Message });
+        var result = await execute(command, value => Volatile.Write(ref receipt, value), token).ConfigureAwait(false);
+        Volatile.Write(ref outcome, result);
+        if (result.Submitted) Volatile.Write(ref receipt, result.Message);
+        return JsonSerializer.Serialize(new { submitted = result.Submitted, message = result.Message });
     }
 }

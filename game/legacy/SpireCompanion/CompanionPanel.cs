@@ -93,12 +93,13 @@ internal sealed class CompanionPanel
     private bool f9Down;
     private bool wDown;
     private double lastWTap = -10;
-    private string message = "可用文字或语音下达战斗外指令；完成当前选择后停下。";
+    private string message = "可用文字或语音指挥游戏内点击；完成当前操作后停下。";
 
     public CompanionPanel(SceneTree tree)
     {
         this.tree = tree;
         var layer = new CanvasLayer { Layer = 90 };
+        layer.SetMeta("spire_companion_ui", true);
         panel = new PanelContainer { Position = new Vector2(24, 70) };
         // Use game fonts, never depend on operating-system font enumeration.
         panel.Theme = new Theme();
@@ -1685,7 +1686,7 @@ internal sealed class CompanionPanel
             AutoStep(next);
             ProactiveStep(next);
             SyncPlan(next);
-            stateLabel.Text = SolverBridge.Owned ? "求解器接管" : RoomCommand.CanOffer(next) ? "指令待命" : "文字建议";
+            stateLabel.Text = SolverBridge.Owned ? "求解器接管" : "指令待命";
             stateLabel.AddThemeColorOverride("font_color", SolverBridge.Owned ? UiStyle.AccentDeep : UiStyle.Good);
             status.Text = $"场景：{next.Scene} · {next.CombatTurn}\n角色：{next.Character} · HP {next.Hp}/{next.MaxHp} · 金币 {next.Gold}\n能量：{next.Energy?.ToString() ?? "—"} · 格挡：{next.Block}\n手牌：{string.Join("、", next.Cards.Select(c => $"{c.Name}({c.Cost})"))}\n敌人：{string.Join("、", next.Enemies.Select(e => $"{e.Name} {e.Hp}/{e.MaxHp}"))}\n牌组 {next.Deck.Length} · 遗物 {next.Relics.Length} · 药水 {next.Potions.Length}\n阶段：{(next.CanEndTurn ? "可操作" : next.BlockReason)}\n求解器：{solver.Description}\n{message}";
             solverStart.Disabled = !solver.Available || solver.FullAuto || solver.Deploying || SolverBridge.Owned || !SolverBridge.CanStart;
