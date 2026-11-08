@@ -347,7 +347,7 @@ internal sealed partial class ChatPanel : IDisposable
             UserSaid?.Invoke(text);
             if ((displayedText ?? text).Length > 0) Append("你", displayedText ?? text);
             ShowTyping();
-            var liveState = GameReader.QueryState("all");
+            var liveState = GameReader.QueryState("all", snapshot);
             GD.Print("[SpireCompanion] live_state_read");
             info.Text = "已读取实时状态，正在请求模型…";
             _ = CompleteAsync(number, next, apiKey, text, snapshot, liveState, runningCommand);

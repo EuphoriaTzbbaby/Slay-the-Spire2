@@ -180,7 +180,8 @@ internal static partial class GameReader
                             return new RoomOptionView(
                                 index.ToString(),
                                 relic != null ? Text(relic.Title) : Text(option.Title),
-                                (relic != null ? Text(relic.DynamicDescription) : Text(option.Description)) +
+                                Text(option.Description) +
+                                (relic != null ? "（遗物效果：" + Text(relic.DynamicDescription) + "）" : "") +
                                 (option.IsProceed ? "（离开）" : ""),
                                 option.IsLocked);
                         }).ToArray();
@@ -596,9 +597,9 @@ internal static partial class GameReader
     }
 
     /// <summary>Read-only live state slices for the chat tools.</summary>
-    public static string QueryState(string scope)
+    public static string QueryState(string scope, GameSnapshot? captured = null)
     {
-        var snapshot = Read();
+        var snapshot = captured ?? ReadCommandSnapshot();
         var text = (scope ?? "screen").Trim().ToLowerInvariant() switch
         {
             "hand" => "手牌：" + (snapshot.Cards.Length == 0 ? "无" : string.Join(" | ", snapshot.Cards.Select(card => $"{card.Name}({card.Cost})：{Shorten(card.Text, 100)}"))),

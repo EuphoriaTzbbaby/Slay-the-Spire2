@@ -116,6 +116,7 @@ Check("Snapshot fingerprint excludes itself and detects combat changes", () => {
 passed += ChatChecks.RunAsync().GetAwaiter().GetResult();
 passed += await ConversationFocusChecks.RunAsync();
 passed += await CommandChecks.RunAsync();
+passed += await EventAdviceChecks.RunAsync();
 passed += VaultChecks.Run();
 passed += VoiceChecks.Preferences();
 passed += VoiceChecks.PendingInputs();
