@@ -17,6 +17,7 @@ internal sealed class CompanionPanel
     private readonly ConcurrentQueue<Action> mainQueue = new();
     private ChatPanel chat = null!;
     private PanelContainer panel = null!;
+    private bool expandedWindow;
     private Label status = null!;
     private Label stateLabel = null!;
     private readonly SceneTree tree;
@@ -117,31 +118,36 @@ internal sealed class CompanionPanel
         layout.AddChild(header);
         var title = new Label
         {
-            Text = "尖塔 AI 陪玩", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            Text = "尖塔搭子", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             VerticalAlignment = VerticalAlignment.Center, MouseFilter = Control.MouseFilterEnum.Stop
         };
-        title.AddThemeFontSizeOverride("font_size", 24);
+        title.AddThemeFontSizeOverride("font_size", 20);
         title.GuiInput += input =>
         {
             if (input is InputEventMouseButton mouse && mouse.ButtonIndex == MouseButton.Left && mouse.Pressed)
             { dragging = true; dragOffset = title.GetGlobalMousePosition() - panel.Position; }
         };
         header.AddChild(title);
-        if (UiStyle.Avatar is { } face)
-            header.AddChild(new TextureRect
-            {
-                Texture = face, CustomMinimumSize = new Vector2(44, 44),
-                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize, StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered
-            });
         stateLabel = new Label { Text = "就绪", VerticalAlignment = VerticalAlignment.Center };
         stateLabel.AddThemeColorOverride("font_color", UiStyle.Good);
-        header.AddChild(stateLabel);
+        var indicators = new HBoxContainer();
+        indicators.AddThemeConstantOverride("separation", 8);
+        stateLabel.AddThemeFontSizeOverride("font_size", 14);
+        indicators.AddChild(stateLabel);
         autoLabel = new Label { Text = "自动：关", VerticalAlignment = VerticalAlignment.Center };
         autoLabel.AddThemeColorOverride("font_color", UiStyle.Muted);
-        header.AddChild(autoLabel);
+        autoLabel.AddThemeFontSizeOverride("font_size", 14);
+        indicators.AddChild(autoLabel);
+        var resize = new Button { Text = "展开", TooltipText = "切换小窗口与大窗口" };
+        resize.Pressed += () => { expandedWindow = !expandedWindow; resize.Text = expandedWindow ? "缩小" : "展开"; };
+        UiStyle.Size(resize, 36, 56); header.AddChild(resize);
+        var collapse = new Button { Text = "收起", TooltipText = "隐藏窗口，保持语音；点击左上角 AI 搭子恢复" };
+        collapse.Pressed += () => panel.Hide();
+        UiStyle.Size(collapse, 36, 56); header.AddChild(collapse);
         var close = new Button { Text = "关闭" };
         close.Pressed += () => { if (voiceChatActive) CloseVoiceChat(); panel.Hide(); };
-        UiStyle.Size(close, 40, 84); header.AddChild(close);
+        UiStyle.Size(close, 36, 56); header.AddChild(close);
+        layout.AddChild(indicators);
 
         tabs = new TabContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill }; layout.AddChild(tabs);
         chatScroll = Page("聊天", out var chatBody);
@@ -200,7 +206,7 @@ internal sealed class CompanionPanel
         UiStyle.Ghost(export); UiStyle.Size(export, 40);
         debugCard.AddChild(export);
 
-        var voiceCard = UiStyle.Card(chatBody, "交流方式");
+        var voiceCard = UiStyle.Card(settingsBody, "交流方式");
         interactionMode = new OptionButton();
         interactionMode.AddItem("文字 → 文字");
         interactionMode.AddItem("语音 → 文字");
@@ -223,7 +229,7 @@ internal sealed class CompanionPanel
         voiceStatus = new Label { Text = "语音聊天已关闭，QQ 开启。", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         voiceStatus.AddThemeColorOverride("font_color", UiStyle.Muted);
         voiceCard.AddChild(voiceStatus);
-        voiceCard.AddChild(UiStyle.Hint("QQ 开启或关闭；说话时显示转写，稍停自动发送。搭子思考时可以补充，会结合前一句重新回答。输入框打字不触发 QQ。"));
+        voiceCard.AddChild(UiStyle.Hint("QQ 开关语音；稍停发送，思考时可补充。收起窗口仍可说话。"));
         voice.StatusChanged += value => mainQueue.Enqueue(() => { if (voiceEnabled) voiceStatus.Text = "语音：" + value; });
         voice.Connected += session => QueueVoice(session, () =>
         {
@@ -324,11 +330,12 @@ internal sealed class CompanionPanel
             ClearVoiceTurns();
         SubmitPendingVoiceTurn();
         var viewport = tree.Root.GetVisibleRect().Size;
-        var width = Math.Clamp(viewport.X - 40, 360, 620);
-        var height = Math.Clamp(viewport.Y - 100, 300, 720);
+        var width = Math.Clamp(viewport.X - 40, 340, expandedWindow ? 620 : 460);
+        var height = Math.Clamp(viewport.Y - 100, 300, expandedWindow ? 720 : 540);
         chatScroll.CustomMinimumSize = settingsScroll.CustomMinimumSize = gameScroll.CustomMinimumSize =
             new Vector2(width - 40, 140);
         panel.Size = new Vector2(width, height);
+        chat.SetTranscriptHeight(Math.Max(140, height - 400));
         if (dragging)
         {
             if (!Input.IsMouseButtonPressed(MouseButton.Left)) dragging = false;

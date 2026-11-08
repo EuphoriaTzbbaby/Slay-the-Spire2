@@ -118,7 +118,7 @@ internal static partial class GameReader
             var options = RoomOptions.MergeDuplicates(cards.Select((card, index) => new RoomOptionView(
                 index.ToString(), Text(card.Title),
                 $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(CardText(card), 100), false)).ToArray());
+                (card.IsUpgraded ? " · 已升级" : "") + "：" + CardText(card), false)).ToArray());
             return new RoomView("Select", StripTags(prompt), "选中后需要确认", options)
                 { Id = ScreenId(selectScreen), Required = ScreenPrompt.RequiredCards(StripTags(prompt)) };
         }
@@ -156,7 +156,7 @@ internal static partial class GameReader
                 return new RoomView("Reward", "卡牌奖励", "选择一张加入牌组，或跳过",
                     cards.Select((card, index) => new RoomOptionView(index.ToString(), Text(card.Title),
                         $"费用 {(card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString())}" +
-                        (card.IsUpgraded ? " · 已升级" : "") + "：" + Shorten(CardText(card), 100), false)).ToArray())
+                        (card.IsUpgraded ? " · 已升级" : "") + "：" + CardText(card), false)).ToArray())
                     { Id = ScreenId(rewardScreen) };
         }
         switch (run.CurrentRoom)
@@ -180,8 +180,7 @@ internal static partial class GameReader
                             return new RoomOptionView(
                                 index.ToString(),
                                 relic != null ? Text(relic.Title) : Text(option.Title),
-                                Text(option.Description) +
-                                (relic != null ? "（遗物效果：" + Text(relic.DynamicDescription) + "）" : "") +
+                                GameText.OptionDescription(Text(option.Description), relic != null ? Text(relic.DynamicDescription) : "") +
                                 (option.IsProceed ? "（离开）" : ""),
                                 option.IsLocked);
                         }).ToArray();
@@ -393,8 +392,7 @@ internal static partial class GameReader
         new("proceed", "离开 / 继续前进", available ? "不在这里继续操作" : "当前还不能离开", !available);
 
     /// <summary>LocString text can carry BBCode; the model should read plain prose.</summary>
-    private static string Plain(string value) => System.Text.RegularExpressions.Regex.Replace(
-        System.Text.RegularExpressions.Regex.Replace(value, "<[^>]+>", ""), "\\[(?:/|lb|rb)[^\\]]*\\]|\\[[a-z]+[^\\]]*\\]", "");
+    private static string Plain(string value) => GameText.Plain(value);
 
     private static string Shorten(string value, int limit) => value.Length <= limit ? value : value[..limit] + "…";
 
@@ -711,11 +709,11 @@ internal static partial class GameReader
     /// <summary>CardModel.Description is a template; the pile-aware call renders the real numbers.</summary>
     private static string CardText(CardModel card)
     {
-        try { return Shorten(Plain(card.GetDescriptionForPile(PileType.Hand)).Replace("\n", " "), 140); }
+        try { return Plain(card.GetDescriptionForPile(PileType.Hand)).Replace("\n", " "); }
         catch (Exception error)
         {
             Godot.GD.PushWarning($"[SpireCompanion] card_text: {error.Message}");
-            try { return Shorten(Plain(Text(card.Description)).Replace("\n", " "), 140); }
+            try { return Plain(Text(card.Description)).Replace("\n", " "); }
             catch { return ""; }
         }
     }

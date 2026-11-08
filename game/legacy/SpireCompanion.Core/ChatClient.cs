@@ -51,13 +51,13 @@ public sealed class ChatClient : IDisposable
             var outcome = await actions.ExecuteAsync(JsonSerializer.Serialize(new { id = namedId }), cancellation).ConfigureAwait(false);
             return actions.HasSubmitted ? actions.Receipt : "本次未执行点击：" + OutcomeMessage(outcome);
         }
-        if (actions == null && CurrentEventAdvice.Applies(snapshot, question))
+        if (actions == null && CurrentChoiceAdvice.Applies(snapshot, question))
         {
-            var options = CurrentEventAdvice.Options(snapshot);
-            if (options.Length == 0) return "当前事件选项还未读取完整，请等待界面加载后再问；本次不猜测选项。";
+            var options = CurrentChoiceAdvice.Options(snapshot);
+            if (options.Length == 0) return "当前界面选项还未读取完整，请等待界面加载后再问；本次不猜测选项。";
             var decision = await DecideAsync(settings, apiKey, snapshot, options, 1, "只提供建议，不执行：" + question,
                 cancellation, plan, string.Join("\n", history.Select(turn => turn.Question))).ConfigureAwait(false);
-            return CurrentEventAdvice.Render(options, decision);
+            return CurrentChoiceAdvice.Render(options, decision);
         }
         var verbosity = Personality.Instructions(settings.TalkMode);
         var messages = new List<object>

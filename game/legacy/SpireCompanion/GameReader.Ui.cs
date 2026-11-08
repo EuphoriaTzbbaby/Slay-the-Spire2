@@ -89,7 +89,7 @@ internal static partial class GameReader
             var viewport = control.GetViewportRect().Size;
             var position = $"位置({center.X / Math.Max(1, viewport.X):P0},{center.Y / Math.Max(1, viewport.Y):P0})";
             var role = control is NConfirmButton ? " · 确认/对勾按钮" : "";
-            result.Add("ui:" + control.GetInstanceId(), new(control, UiName(control),
+            result.Add("ui:" + control.GetInstanceId(), new(control, System.Text.RegularExpressions.Regex.Replace(GameText.Plain(UiName(control)), @"\s+", " "),
                 $"{control.GetType().Name} · {control.Name} · {position}{role}", locked));
         }
         return result;

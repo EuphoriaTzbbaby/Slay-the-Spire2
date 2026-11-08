@@ -216,7 +216,7 @@ internal static class ChatChecks
             Require(system.Contains("不超过 30 个字"));
             return;
         });
-        await Check("Answers naming cards outside the screen are blocked, not stored", async () =>
+        await Check("Invalid card recommendations return canonical options without invented cards", async () =>
         {
             using var client = new ChatClient(new Handler((request, token) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -229,7 +229,7 @@ internal static class ChatChecks
                 Room = new RoomView("Reward", "选择一张牌", "", [new RoomOptionView("0", "重锤", "费用 3", false)])
             };
             var reply = await conversation.AskAsync(settings, "k", "选哪个", snapshot);
-            Require(reply.Text.Contains("被拦截"));
+            Require(reply.Text.Contains("未通过选项校验") && reply.Text.Contains("重锤"));
             Require(!reply.Text.Contains("选「余烬」更好"));
             return;
         });

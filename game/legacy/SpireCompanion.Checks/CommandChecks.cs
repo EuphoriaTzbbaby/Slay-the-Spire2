@@ -86,7 +86,7 @@ internal static class CommandChecks
             return ++calls == 1 ? Tool("choose_room_option", "{\"id\":\"rest\"}") : Reply("建议休息。");
         })))
         {
-            await client.AskAsync(Settings, "", "这里怎么选", State, [], default,
+            await client.AskAsync(Settings, "", "你好", State, [], default,
                 toolExecutor: (_, _) => throw new Exception("An ungranted action must not reach the executor"));
         }
         Pass("A model cannot invoke an unadvertised action through the read-only tool executor");

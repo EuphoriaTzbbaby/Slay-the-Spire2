@@ -23,7 +23,7 @@ internal sealed partial class ChatPanel : IDisposable
     private readonly ScrollContainer logScroll = new()
     {
         SizeFlagsVertical = Control.SizeFlags.ExpandFill, HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-        CustomMinimumSize = new Vector2(0, 260)
+        CustomMinimumSize = new Vector2(0, 140)
     };
     private readonly VBoxContainer log = new() { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
     private readonly LineEdit question = new() { PlaceholderText = "问问搭子，或点击分析当前局面", MaxLength = 4000 };
@@ -90,8 +90,7 @@ internal sealed partial class ChatPanel : IDisposable
 
         welcome = new VBoxContainer();
         welcome.AddThemeConstantOverride("separation", 8);
-        welcome.AddChild(Speech(
-            "我是奶龙，你的尖塔陪练。先随便聊聊，或者点「分析当前局面」，我看看这一手该打哪张牌。", 132));
+        welcome.AddChild(UiStyle.Hint("说句话或分析当前局面；QQ 开关语音。"));
         chat.AddChild(welcome);
 
         var transcriptCard = UiStyle.Card(chat, "对话");
@@ -101,17 +100,18 @@ internal sealed partial class ChatPanel : IDisposable
         voicePreview.AddThemeColorOverride("font_color", UiStyle.Muted);
         chat.AddChild(voicePreview);
         chat.AddChild(question);
-        var buttons = new HBoxContainer();
+        var buttons = new HFlowContainer();
         buttons.AddThemeConstantOverride("separation", 8);
         send.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         UiStyle.Primary(send);
         var clear = new Button { Text = "清空" };
         UiStyle.Secondary(advice); UiStyle.Ghost(cancel); UiStyle.Ghost(clear);
-        UiStyle.Size(send, 44); UiStyle.Size(advice, 44, 132); UiStyle.Size(cancel, 44, 108); UiStyle.Size(clear, 44, 76);
+        UiStyle.Size(send, 38, 76); UiStyle.Size(advice, 38, 132); UiStyle.Size(cancel, 38, 76); UiStyle.Size(clear, 38, 52);
         buttons.AddChild(send); buttons.AddChild(advice); buttons.AddChild(cancel); buttons.AddChild(clear);
         cancel.Visible = false;
         chat.AddChild(buttons);
-        chat.AddChild(UiStyle.Hint("明确说「帮我点击…」可操作当前游戏界面，每次完成后停下；问建议不会点击。回复可能产生模型服务费用。"));
+        question.TooltipText = "「帮我点击…」执行一次；问建议不会点击。回复可能产生模型费用。";
+        info.AddThemeFontSizeOverride("font_size", 14);
         chat.AddChild(info);
 
         send.Pressed += () => Begin(question.Text);
@@ -322,6 +322,8 @@ internal sealed partial class ChatPanel : IDisposable
         onMain(() => { try { Run(); } finally { done.Set(); } });
         return done.Wait(TimeSpan.FromSeconds(3)) ? result : null;
     }
+
+    public void SetTranscriptHeight(float height) => logScroll.CustomMinimumSize = new Vector2(0, height);
 
     private void Begin(string text) => Begin(text, null);
 
