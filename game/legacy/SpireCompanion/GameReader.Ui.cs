@@ -48,6 +48,7 @@ internal static partial class GameReader
 
     private static string UiName(Control control)
     {
+        if (control is NConfirmButton && control.GetParent() is NCharacterSelectScreen) return "开始游戏";
         if (control is NCharacterSelectButton character) return Text(character.Character.Title);
         if (control is NCardHolder card && card.CardModel != null) return Text(card.CardModel.Title);
         if (control is NTopBarMapButton) return "地图";
@@ -79,11 +80,17 @@ internal static partial class GameReader
             bool supported = control is NClickableControl or BaseButton or NCardHolder ||
                 control.MouseFilter != Control.MouseFilterEnum.Ignore && control.GetSignalConnectionList(Control.SignalName.GuiInput).Count > 0;
             if (!supported) continue;
+            // Rich-text GUI input also drives hover/inspection; only actual links are click targets.
+            if (control is RichTextLabel rich && rich.GetSignalConnectionList(RichTextLabel.SignalName.MetaClicked).Count == 0) continue;
             // Labels decorating a native button are not separate click targets.
             if (control is not (NClickableControl or BaseButton or NCardHolder) && control.GetParent() is NClickableControl or BaseButton or NCardHolder) continue;
             bool locked = control switch { NClickableControl native => !native.IsEnabled, BaseButton button => button.Disabled, _ => false };
+            var center = control.GetGlobalRect().GetCenter();
+            var viewport = control.GetViewportRect().Size;
+            var position = $"位置({center.X / Math.Max(1, viewport.X):P0},{center.Y / Math.Max(1, viewport.Y):P0})";
+            var role = control is NConfirmButton ? " · 确认/对勾按钮" : "";
             result.Add("ui:" + control.GetInstanceId(), new(control, UiName(control),
-                $"{control.GetType().Name} · {control.Name}", locked));
+                $"{control.GetType().Name} · {control.Name} · {position}{role}", locked));
         }
         return result;
     }

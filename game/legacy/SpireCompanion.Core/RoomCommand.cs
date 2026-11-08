@@ -44,15 +44,23 @@ public sealed record RoomCommand(GameSnapshot Snapshot, string[] Ids)
         if (!IsRequested(text)) return null;
         var matches = snapshot.Room?.Options.Where(option => option.Id.StartsWith("ui:") && !option.Locked &&
             option.Name.Length >= 2 && text.Contains(option.Name, StringComparison.Ordinal)).ToArray() ?? [];
-        return matches.Length == 1 ? matches[0].Id : null;
+        if (matches.Length == 1) return matches[0].Id;
+        if (matches.Length > 1) return null;
+        if (Regex.IsMatch(text, "确认|对勾|勾号|进行游戏|开始冒险"))
+        {
+            var confirms = snapshot.Room?.Options.Where(option => option.Id.StartsWith("ui:") && !option.Locked &&
+                option.Detail.StartsWith("NConfirmButton ·", StringComparison.Ordinal)).ToArray() ?? [];
+            if (confirms.Length == 1) return confirms[0].Id;
+        }
+        return null;
     }
 
     /// <summary>Only explicit imperatives expose the action tool. Advice and quoted examples remain read-only.</summary>
     public static bool IsRequested(string text)
     {
-        const string verbs = "(?:选择|选|挑|拿|买|购买|升级|删|移除|变换|休息|锻造|走|前进|离开|跳过|领取|打开|关闭|确认|点击|点|决定|处理|执行|进入|返回|退出|开始|继续|调高|调低)";
+        const string verbs = "(?:选择|选|挑|拿|买|购买|升级|删|移除|变换|休息|锻造|走|前进|离开|跳过|领取|打开|关闭|确认|点击|点|决定|处理|执行|进入|返回|退出|开始|继续|进行游戏|调高|调低)";
         if (Regex.IsMatch(text, "(?:只|仅).{0,5}(?:分析|建议|解释|回答)|(?:不要|别|先别|不用).{0,4}(?:操作|帮我|替我|" + verbs + ")|(?:帮我|替我)\\s*(?:别|不要|不用)|假如|假设|举例|这句话|翻译|复述|以后|下次")) return false;
-        const string questions = "怎么|如何|应该|要不要|值不值得|为什么|选哪|买哪|买什么|选什么|走哪|去哪里|好不好";
+        const string questions = "怎么|如何|应该|要不要|值不值得|为什么|选哪|买哪|买什么|选什么|走哪|去哪里|好不好|是否|有没有";
         if (Regex.IsMatch(text, "(?:帮我|替我|你来|我要你|让你|请你).{0,40}" + verbs) &&
             !Regex.IsMatch(text, questions)) return true;
         return Regex.IsMatch(text, "(?:^|[，。；;！!\\n])\\s*(?:(?:这里|这次|现在|直接|先|就|请|给我|你)\\s*)*" + verbs) &&

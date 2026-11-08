@@ -32,15 +32,22 @@ internal sealed partial class ChatPanel
             {
                 var outcome = GameReader.ExecuteCommand(command, Record, token);
                 Append("操作", outcome.Message);
-                GD.Print($"[SpireCompanion] command_result kind={command.Snapshot.Room!.Kind} ids={string.Join(",", command.Ids)} submitted={outcome.Submitted}");
+                var targets = command.Snapshot.Room!.Options.Where(option => command.Ids.Contains(option.Id));
+                GD.Print($"[SpireCompanion] command_result kind={command.Snapshot.Room.Kind} targets={string.Join(";", targets.Select(option => option.Name + " [" + option.Detail + "]"))} submitted={outcome.Submitted}");
                 return outcome;
             }, token).ConfigureAwait(false);
             if (result.Submitted && command.Ids[0].StartsWith("ui:", StringComparison.Ordinal))
             {
-                for (int i = 0; i < 8; i++)
+                var starting = command.Snapshot.Room!.Title == "NCharacterSelectScreen" &&
+                    command.Snapshot.Room.Options.Any(option => option.Id == command.Ids[0] && option.Detail.StartsWith("NConfirmButton ·"));
+                for (int i = 0; i < (starting ? 100 : 8); i++)
                 {
                     await Task.Delay(100, token).ConfigureAwait(false);
-                    var changed = await CommandOnMainAsync(number, () => GameReader.ReadCommandSnapshot().Fingerprint != command.Snapshot.Fingerprint, token).ConfigureAwait(false);
+                    var changed = await CommandOnMainAsync(number, () =>
+                    {
+                        var current = GameReader.ReadCommandSnapshot();
+                        return starting ? current.Room?.Id != command.Snapshot.Room.Id : current.Fingerprint != command.Snapshot.Fingerprint;
+                    }, token).ConfigureAwait(false);
                     if (changed)
                     {
                         var text = "已点击「" + command.Snapshot.Room!.Options.First(option => option.Id == command.Ids[0]).Name + "」，点击后游戏界面已更新。";

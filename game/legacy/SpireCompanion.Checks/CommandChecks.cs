@@ -160,7 +160,26 @@ internal static class CommandChecks
             Require(answer.Contains("界面已变化") && !rejected.HasSubmitted);
         }
         Pass("A model claiming success without an actual tool result is replaced by an honest no-action receipt");
-        return 12;
+        var characterScreen = menu with { Room = new("Ui", "NCharacterSelectScreen", "", [
+            new("ui:start", "开始游戏", "NConfirmButton · ConfirmButton", false),
+            new("ui:back", "返回", "NBackButton · BackButton", false)]) };
+        foreach (var instruction in new[] { "确认", "点击右侧的对勾按钮", "进行游戏", "帮我开始冒险", "帮我点击开始游戏" })
+            Require(RoomCommand.NamedUiTarget(characterScreen, instruction) == "ui:start", instruction);
+        foreach (var question in new[] { "确认一下是否点击了", "对勾按钮是什么", "不要确认", "帮我确认有没有点击" })
+            Require(RoomCommand.NamedUiTarget(characterScreen, question) == null, question);
+        Require(RoomCommand.NamedUiTarget(characterScreen with { Room = characterScreen.Room! with { Options = [
+            new("ui:a", "确认甲", "NConfirmButton · A", false), new("ui:b", "确认乙", "NConfirmButton · B", false)] } }, "点击对勾") == null);
+        using (var client = new ChatClient(new Handler((_, _) => throw new Exception("Confirmation must use the observed button without asking the model"))))
+        {
+            var session = new RoomCommandSession(characterScreen, (command, _, _) =>
+            {
+                Require(command.Ids.Single() == "ui:start");
+                return Task.FromResult(new ActionOutcome(true, "已点击开始游戏，界面已更新。"));
+            });
+            Require((await client.AskAsync(Settings, "", "点击右侧的对勾按钮", characterScreen, [], default, actions: session)).Contains("已点击开始游戏"));
+        }
+        Pass("Confirm/checkmark instructions resolve to the unique real confirmation button; questions and ambiguity never click");
+        return 13;
     }
 
     private static void Require(bool value, string? detail = null) { if (!value) throw new Exception("Command check failed: " + detail); }
