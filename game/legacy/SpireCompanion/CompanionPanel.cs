@@ -828,8 +828,8 @@ internal sealed class CompanionPanel
         }
         if (!voiceEnabled)
         {
-            interactionMode.Select(1);
-            SetInteractionMode(1);
+            interactionMode.Select(2);
+            SetInteractionMode(2);
         }
         if (!voiceEnabled) return;
         voiceChatActive = true;
@@ -838,7 +838,7 @@ internal sealed class CompanionPanel
         UpdateVoiceChatButton();
         if (voice.IsConnected) PrepareVoiceInput(voice.SessionId);
         else voiceStatus.Text = "语音聊天：正在连接，QQ 可随时关闭。";
-        GD.Print("[SpireCompanion] voice_chat_opened");
+        GD.Print($"[SpireCompanion] voice_chat_opened output={voiceOutputEnabled}");
     }
 
     private void PrepareVoiceInput(string session)
