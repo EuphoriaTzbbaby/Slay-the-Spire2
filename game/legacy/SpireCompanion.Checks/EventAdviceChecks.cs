@@ -61,7 +61,35 @@ internal static class EventAdviceChecks
         var marked = CurrentChoiceAdvice.Render([new("0", "新叶", "[gold]变化[/gold][blue]1[/blue]张牌。", false)], "0");
         Require(marked.Contains("变化1张牌") && !marked.Contains("[gold]"));
         Console.WriteLine("PASS Game markup is removed before display; complete option text is preferred over duplicate relic text");
-        return 3;
+        var screenshot = reward with { Room = new("Reward", "卡牌奖励", "", [
+            new("0", "惊逃", "费用2：在你的回合结束时，随机打出你手牌中的1张攻击牌攻击随机敌人。", false),
+            new("1", "暴走", "费用1：造成10点伤害。将这张牌在本场战斗中的伤害增加5。", false),
+            new("2", "跃跃欲试", "费用3：获得15点格挡。每有一点力量额外获得5点格挡。", false)]) { Id = "reward-a" } };
+        using var typoClient = new ChatClient(new Handler(async request =>
+        {
+            using var data = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+            using var context = JsonDocument.Parse(data.RootElement.GetProperty("messages")[1].GetProperty("content").GetString()!);
+            Require(context.RootElement.GetProperty("options")[0].GetProperty("name").GetString() == "惊逃");
+            return new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(new {
+                choices = new[] { new { message = new { content = "{\"id\":\"1\",\"reason\":\"慎选和猛攻比暴走更强\"}" } } }
+            })) };
+        }));
+        foreach (var transcript in new[] { "这三个才你蜕变抓那一个", "自说答案", "就它们里面吧" })
+        {
+            var result = await typoClient.AskAsync(new("https://model.example/v1", "test"), "", transcript, screenshot, [], default);
+            Require(result.Contains("暴走") && !result.Contains("慎选") && !result.Contains("猛攻"));
+            if (transcript.Contains("答案")) Require(result == "建议选「暴走」。");
+        }
+        Require(!CurrentChoiceAdvice.Applies(screenshot, "你好") && !CurrentChoiceAdvice.Applies(screenshot, "快说一句我爱你"));
+        Console.WriteLine("PASS Actual ASR typos and keyword-free card follow-ups remain bounded; answer-only requests are concise and smalltalk stays separate");
+        var animated = screenshot with { Room = screenshot.Room! with { Options = [.. screenshot.Room!.Options,
+            new("ui:99", "悬浮链接", "位置(51%,30%)", false)] } };
+        Require(ReplyFreshness.Same(screenshot, animated));
+        Require(!ReplyFreshness.Same(screenshot, screenshot with { Room = screenshot.Room! with { Id = "reward-b" } }));
+        Require(!ReplyFreshness.Same(screenshot, screenshot with { Room = screenshot.Room! with { Options = [new("0", "其他牌", "不同效果", false)] } }));
+        Require(!ReplyFreshness.Same(screenshot, screenshot with { Gold = 0 }));
+        Console.WriteLine("PASS Reply freshness ignores decorative UI changes but rejects real offers, screen changes and gameplay-resource changes");
+        return 5;
     }
     private static void Require(bool condition) { if (!condition) throw new Exception("Event advice check failed"); }
     private sealed class Handler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) : HttpMessageHandler

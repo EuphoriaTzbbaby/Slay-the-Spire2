@@ -350,7 +350,7 @@ internal sealed partial class ChatPanel : IDisposable
             if ((displayedText ?? text).Length > 0) Append("你", displayedText ?? text);
             ShowTyping();
             var liveState = GameReader.QueryState("all", snapshot);
-            GD.Print("[SpireCompanion] live_state_read");
+            GD.Print($"[SpireCompanion] live_state_read kind={snapshot.Room?.Kind} bounded_advice={runningCommand == null && CurrentChoiceAdvice.Applies(snapshot, text)} options={string.Join("|", CurrentChoiceAdvice.Options(snapshot).Select(option => option.Name))}");
             info.Text = "已读取实时状态，正在请求模型…";
             _ = CompleteAsync(number, next, apiKey, text, snapshot, liveState, runningCommand);
         }
@@ -370,10 +370,19 @@ internal sealed partial class ChatPanel : IDisposable
             {
                 if (disposed || number != requestNumber) return;
                 bool changed;
-                try { changed = GameReader.ReadCommandSnapshot().Fingerprint != reply.Fingerprint; }
+                try { changed = !ReplyFreshness.Same(snapshot, GameReader.ReadCommandSnapshot()); }
                 catch { changed = true; }
                 var grounding = AnswerGrounding.Check(reply.Text, snapshot);
                 var blocked = reply.Text.StartsWith("（这条回答被拦截", StringComparison.Ordinal);
+                if (changed && actions?.HasSubmitted != true && CurrentChoiceAdvice.Applies(snapshot, text))
+                {
+                    conversation.InterruptUnshownReply(); // Remove the unseen stale suggestion, never an action receipt.
+                    Append("提示", "界面或选项已变化，旧建议已丢弃；请根据当前页面重新提问。");
+                    runningQuestion = "";
+                    info.Text = "旧建议未显示或播报，请重新分析当前页面。";
+                    GD.Print("[SpireCompanion] stale_choice_reply_discarded");
+                    return;
+                }
                 var body = reply.Text;
                 if (changed && !blocked && actions?.HasSubmitted != true) body = "（这条回答基于提问时的界面，当前界面已变化）\n" + body;
                 if (blocked)
@@ -382,7 +391,7 @@ internal sealed partial class ChatPanel : IDisposable
                     body += $"\n\n（提示：以下名称不在当前界面：{string.Join("、", grounding.Unknown)}；可能是模型记忆，请以屏幕为准。）";
                 Append("搭子", body);
                 runningQuestion = ""; // Already visible; a later supplement starts a new turn with this answer in history.
-                if (!blocked) ReplyReady?.Invoke(body);
+                if (!blocked && (!changed || actions?.HasSubmitted == true)) ReplyReady?.Invoke(body);
                 info.Text = actions?.HasSubmitted == true ? "本条指令已处理，后续操作等待你的新指令。"
                     : changed ? "局面已变化：这条建议基于提问时的状态，可重新分析。" : "建议已返回，由你决定是否采用。";
             });

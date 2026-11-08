@@ -57,7 +57,7 @@ public sealed class ChatClient : IDisposable
             if (options.Length == 0) return "当前界面选项还未读取完整，请等待界面加载后再问；本次不猜测选项。";
             var decision = await DecideAsync(settings, apiKey, snapshot, options, 1, "只提供建议，不执行：" + question,
                 cancellation, plan, string.Join("\n", history.Select(turn => turn.Question))).ConfigureAwait(false);
-            return CurrentChoiceAdvice.Render(options, decision);
+            return CurrentChoiceAdvice.Render(options, decision, settings.TalkMode == "quiet" || CurrentChoiceAdvice.WantsBrief(question));
         }
         var verbosity = Personality.Instructions(settings.TalkMode);
         var messages = new List<object>
