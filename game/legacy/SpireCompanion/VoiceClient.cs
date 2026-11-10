@@ -41,6 +41,7 @@ internal sealed class VoiceClient
     public bool Running => lifetime is { IsCancellationRequested: false };
     public bool IsConnected => current is { Ready: true };
     public bool HasError => connectionError != null || current?.LastError != null;
+    public string? LastError => current?.LastError ?? connectionError;
     public bool IsListening => current is { Ready: true, Listening: "continuous" or "listening" or "recognizing" };
     public bool IsSpeaking => current is { Ready: true, Speaking: true };
     public string SessionId => current is { Ready: true } connection ? connection.SessionId : "";

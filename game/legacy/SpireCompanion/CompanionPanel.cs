@@ -794,7 +794,10 @@ internal sealed class CompanionPanel
             !Input.IsKeyPressed(Key.Ctrl) && !Input.IsKeyPressed(Key.Meta) &&
             !Input.IsKeyPressed(Key.Alt) && !Input.IsKeyPressed(Key.Shift);
         if (voiceShortcut.Update(Input.IsPhysicalKeyPressed(Key.Q), Time.GetTicksMsec() / 1000.0, allowed))
+        {
+            GD.Print("[SpireCompanion] voice_shortcut_triggered");
             ToggleVoiceChat();
+        }
     }
 
     private void UpdateVoiceChatButton()
@@ -867,10 +870,31 @@ internal sealed class CompanionPanel
             voiceStartingSession = "";
             if (!started)
             {
+                var internalAudioFailure = voice.LastError?.Contains("-9986", StringComparison.Ordinal) == true;
                 var detail = voiceStatus.Text;
+                GD.Print($"[SpireCompanion] voice_input_start_failed internal_portaudio={internalAudioFailure}");
                 CloseVoiceChat();
                 voiceStatus.Text = detail;
+                if (internalAudioFailure) _ = RecycleAudioServiceAsync();
             }
+        });
+    }
+
+    private async Task RecycleAudioServiceAsync()
+    {
+        bool recycled;
+        try { recycled = await voiceService.RecycleOwnedAsync().ConfigureAwait(false); }
+        catch (Exception error)
+        {
+            GD.PushWarning($"[SpireCompanion] voice_recycle_failed {error.GetType().Name}");
+            mainQueue.Enqueue(() => { if (!voiceChatActive) voiceStatus.Text = "语音进程回收未完成，请退出游戏后重试。"; });
+            return;
+        }
+        mainQueue.Enqueue(() =>
+        {
+            if (!voiceChatActive)
+                voiceStatus.Text = recycled ? "麦克风后端出错，自启语音进程已回收；再次 QQ 将重新启动。"
+                    : "麦克风后端出错；当前不是游戏自启进程，请开发者检查手动语音服务。";
         });
     }
 

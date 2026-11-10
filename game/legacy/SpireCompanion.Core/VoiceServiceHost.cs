@@ -153,6 +153,25 @@ public sealed class VoiceServiceHost(Func<VoiceLaunchPlan> resolve) : IDisposabl
         catch (OperationCanceledException) when (!cancel.IsCancellationRequested) { return false; }
     }
 
+    public async Task<bool> RecycleOwnedAsync()
+    {
+        await starting.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            Process? owned;
+            lock (sync)
+            {
+                if (disposed || process == null) return false;
+                owned = process;
+                process = null;
+                startupError = null;
+            }
+            await StopOwnedAsync(owned).ConfigureAwait(false);
+            return true;
+        }
+        finally { starting.Release(); }
+    }
+
     public void Dispose()
     {
         Process? owned;
@@ -163,22 +182,31 @@ public sealed class VoiceServiceHost(Func<VoiceLaunchPlan> resolve) : IDisposabl
             owned = process;
             process = null;
         }
-        if (owned == null) return;
+        if (owned != null) _ = StopOwnedAsync(owned);
+    }
+
+    private static async Task StopOwnedAsync(Process owned)
+    {
         try { owned.StandardInput.Close(); } catch (IOException) { }
         // EOF lets Python stop audio even if the game crashes. Only our own child is a fallback kill target.
-        _ = Task.Run(async () =>
+        using (owned)
         {
-            using (owned)
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                await owned.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
             {
                 try
                 {
-                    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                    await owned.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+                    owned.Kill(entireProcessTree: true);
+                    using var stopped = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                    await owned.WaitForExitAsync(stopped.Token).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
-                { try { owned.Kill(entireProcessTree: true); } catch (InvalidOperationException) { } }
                 catch (InvalidOperationException) { }
             }
-        });
+            catch (InvalidOperationException) { }
+        }
     }
 }

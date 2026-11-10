@@ -75,7 +75,7 @@ internal static class VoiceServiceHostChecks
                     ? [typeof(VoiceServiceHostChecks).Assembly.Location] : [];
                 return new(program, [.. arguments, denied ? "--voice-host-denied-fixture" : wait ? "--voice-host-wait-fixture" : "--voice-host-fixture"], directory);
             }
-            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(25));
             var port = FreePort();
             int resolved = 0;
             using var host = new VoiceServiceHost(() => { resolved++; return Fixture(); });
@@ -97,12 +97,30 @@ internal static class VoiceServiceHostChecks
             }
             Console.WriteLine("PASS Concurrent QQ startup launches once; service stays warm, recovers after a crash and exits on parent EOF");
 
+            using (var recover = new VoiceServiceHost(() => Fixture()))
+            {
+                var recoveryPort = FreePort();
+                var recoveryFile = tokenFile + ".recovery";
+                await recover.EnsureRunningAsync(recoveryPort, recoveryFile, limit.Token);
+                using var original = Process.GetProcessById(int.Parse(File.ReadAllText(recoveryFile + ".pid")));
+                var recycling = recover.RecycleOwnedAsync();
+                await recover.EnsureRunningAsync(recoveryPort, recoveryFile, limit.Token);
+                Require(await recycling && original.HasExited);
+                Require(File.ReadAllText(recoveryFile + ".closed") == "EOF");
+                using var replacement = Process.GetProcessById(int.Parse(File.ReadAllText(recoveryFile + ".pid")));
+                Require(replacement.Id != original.Id && !replacement.HasExited);
+                recover.Dispose();
+                await replacement.WaitForExitAsync(limit.Token);
+            }
+            Console.WriteLine("PASS Audio-failure recycling closes only the owned child and a concurrent retry starts a fresh process");
+
             using (var external = new TcpListener(IPAddress.Loopback, 0))
             {
                 external.Start();
                 var externalPort = ((IPEndPoint)external.LocalEndpoint).Port;
                 using var reuse = new VoiceServiceHost(() => throw new Exception("Must not launch over an existing service"));
                 await reuse.EnsureRunningAsync(externalPort, tokenFile, limit.Token);
+                Require(!await reuse.RecycleOwnedAsync());
                 reuse.Dispose();
                 using var probe = new TcpClient();
                 await probe.ConnectAsync(IPAddress.Loopback, externalPort, limit.Token);
@@ -138,7 +156,7 @@ internal static class VoiceServiceHostChecks
                 Require(deniedLaunches == 1);
             }
             Console.WriteLine("PASS Denied microphone permission stays explicit and does not relaunch the consent app automatically");
-            return 5;
+            return 6;
         }
         finally { Directory.Delete(directory, recursive: true); }
     }

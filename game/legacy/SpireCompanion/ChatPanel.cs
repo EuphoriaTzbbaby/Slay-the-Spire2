@@ -126,6 +126,11 @@ internal sealed partial class ChatPanel : IDisposable
 
         send.Pressed += () => Begin(question.Text);
         question.TextSubmitted += Begin;
+        question.GuiInput += input =>
+        {
+            if (input is InputEventKey { Keycode: Key.Escape, Pressed: true, Echo: false })
+            { question.ReleaseFocus(); question.AcceptEvent(); }
+        };
         advice.Pressed += () => Begin("请根据当前局面给出最值得关注的建议，先说结论，再简短解释。如果缺少关键状态请说明。");
         cancel.Pressed += Cancel;
         clear.Pressed += () =>
@@ -360,7 +365,7 @@ internal sealed partial class ChatPanel : IDisposable
             runningQuestion = text;
             voiceInterrupted = false;
             SetBusy(true); info.Text = "搭子正在思考…";
-            if (displayedText == null) question.Text = "";
+            if (displayedText == null) { question.Text = ""; question.ReleaseFocus(); }
             Interrupted?.Invoke();
             runningCommand = RoomCommand.CanOffer(snapshot) && RoomCommand.IsRequested(text) && GameReader.CanExecuteCommand()
                 ? new RoomCommandSession(snapshot, (command, record, token) => ExecuteRoomCommandAsync(number, command, record, token)) : null;
