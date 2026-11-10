@@ -62,6 +62,7 @@ internal sealed class CompanionPanel
     private bool solverSuspended;
     private bool voiceEnabled;
     private bool voiceOutputEnabled;
+    private bool stoppingSpeech;
     private OptionButton interactionMode = null!;
     private Button voiceListen = null!;
     private Button voiceStopSpeech = null!;
@@ -219,7 +220,7 @@ internal sealed class CompanionPanel
         voiceListen = new Button { Text = "开始语音", TooltipText = "QQ 开启持续语音聊天，再按 QQ 关闭" };
         voiceListen.Pressed += () => ToggleVoiceChat();
         voiceStopSpeech = new Button { Text = "停止播报", Disabled = !voiceEnabled };
-        voiceStopSpeech.Pressed += () => { if (voiceEnabled) _ = voice.StopSpeechAsync(); };
+        voiceStopSpeech.Pressed += () => _ = StopPlaybackForInputAsync();
         voiceTest = new Button { Text = "试听", Disabled = !voiceEnabled };
         voiceTest.Pressed += () => { if (voiceEnabled) _ = voice.SpeakAsync("你好，我是你的尖塔搭子。语音播报测试成功。", "voice-test"); };
         UiStyle.Primary(voiceListen); UiStyle.Secondary(voiceStopSpeech); UiStyle.Ghost(voiceTest);
@@ -261,6 +262,7 @@ internal sealed class CompanionPanel
         voice.IntentReceived += (session, id, intent) => QueueVoice(session, () => HandleVoiceIntent(id, intent));
 
         chat = new ChatPanel(chatBody, settingsBody, mainQueue.Enqueue);
+        chat.InterruptSpeech += () => _ = StopPlaybackForInputAsync();
         chat.PlanProvider = () => plan.Describe();
         chat.Interrupted += () =>
         {
@@ -335,7 +337,7 @@ internal sealed class CompanionPanel
         chatScroll.CustomMinimumSize = settingsScroll.CustomMinimumSize = gameScroll.CustomMinimumSize =
             new Vector2(width - 40, 140);
         panel.Size = new Vector2(width, height);
-        chat.SetTranscriptHeight(Math.Max(140, height - 400));
+        chat.SetTranscriptHeight(Math.Max(110, height - 400 - (voiceChatActive ? 36 : 0)));
         if (dragging)
         {
             if (!Input.IsMouseButtonPressed(MouseButton.Left)) dragging = false;
@@ -803,10 +805,19 @@ internal sealed class CompanionPanel
 
     private void UpdateVoiceHud()
     {
+        chat?.ShowVoiceTurn(voiceChatActive, voice.IsSpeaking, voice.IsListening, stoppingSpeech);
         voiceHud?.SetState(!voiceChatActive ? VoiceHudState.Off
             : voice.HasError ? VoiceHudState.Unavailable
             : !voice.IsConnected || voiceStartingSession.Length > 0 ? VoiceHudState.Connecting
             : voice.IsListening ? VoiceHudState.Listening : VoiceHudState.Unavailable);
+    }
+
+    private async Task StopPlaybackForInputAsync()
+    {
+        if (!voiceChatActive || !voice.IsConnected || stoppingSpeech) return;
+        stoppingSpeech = true;
+        try { await voice.StopSpeechAsync().ConfigureAwait(false); }
+        finally { mainQueue.Enqueue(() => stoppingSpeech = false); }
     }
 
     private void CloseVoiceChat()

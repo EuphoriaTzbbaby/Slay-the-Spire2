@@ -18,6 +18,7 @@ internal sealed class VoiceClient
         public string? LastError;
         public bool Ready;
         public volatile string Listening = "disabled";
+        public volatile bool Speaking;
         public string RecognizingId = "";
         public void Dispose()
         {
@@ -41,6 +42,7 @@ internal sealed class VoiceClient
     public bool IsConnected => current is { Ready: true };
     public bool HasError => connectionError != null || current?.LastError != null;
     public bool IsListening => current is { Ready: true, Listening: "continuous" or "listening" or "recognizing" };
+    public bool IsSpeaking => current is { Ready: true, Speaking: true };
     public string SessionId => current is { Ready: true } connection ? connection.SessionId : "";
 
     public void Start(int port, string token, Func<CancellationToken, Task>? ensureService = null)
@@ -233,6 +235,8 @@ internal sealed class VoiceClient
                     var response = root.GetProperty("result");
                     if (response.TryGetProperty("listening", out var listeningState))
                         connection.Listening = listeningState.GetString() ?? "disabled";
+                    if (response.TryGetProperty("playback", out var playbackState))
+                        connection.Speaking = playbackState.GetString() == "playing";
                     pending.TrySetResult(response.Clone());
                 }
                 else pending.TrySetException(new IOException(root.GetProperty("error").GetProperty("message").GetString() ?? "语音请求被拒绝。"));
@@ -271,13 +275,14 @@ internal sealed class VoiceClient
                 case "recognition.cancelled":
                     EndInput(connection, data.GetProperty("input_id").GetString() ?? "");
                     break;
-                case "speech.started": connection.LastError = null; break;
+                case "speech.started": connection.LastError = null; connection.Speaking = true; break;
                 case "recognition.timeout":
                     EndInput(connection, data.GetProperty("input_id").GetString() ?? "");
                     StatusChanged?.Invoke("这句话没听清，持续模式会继续接收下一句。"); break;
                 case "state.changed":
                     var playback = data.TryGetProperty("playback", out var p) ? p.GetString() : "idle";
                     var listening = data.TryGetProperty("listening", out var l) ? l.GetString() : "disabled";
+                    connection.Speaking = playback == "playing";
                     connection.Listening = listening ?? "disabled";
                     StatusChanged?.Invoke(connection.LastError ?? (playback == "playing" ? "正在播报。" : listening switch
                     {

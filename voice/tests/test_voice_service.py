@@ -256,6 +256,22 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(self.speaker.cancelled, 2)
         self.assertFalse(self.mic.muted)
 
+    async def test_stop_speech_keeps_continuous_input_and_accepts_next_sentence(self):
+        await self.hello()
+        await self.request("listening.start", {"mode": "continuous"})
+        await self.enqueue("talking")
+        await asyncio.wait_for(self.speaker.calls.get(), 2)
+        self.assertTrue(self.mic.muted)
+        await self.request("speech.clear", {"include_current": True})
+        await self.event("speech.cancelled", "talking")
+        self.assertFalse(self.mic.muted)
+        self.assertEqual((await self.request("service.status"))["result"]["listening_mode"], "continuous")
+        self.assertEqual(self.mic.stopped, 0)
+        self.mic.chunks.put(AudioEvent('started'))
+        self.mic.chunks.put(AudioEvent('final', '下一句测试'))
+        result = await self.event("input.final")
+        self.assertEqual(result["data"]["text"], '下一句测试')
+
     async def test_expired_speech_is_not_played(self):
         await self.hello()
         await self.enqueue("blocking")

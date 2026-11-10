@@ -4,6 +4,7 @@ import asyncio
 import queue
 import sys
 import threading
+import time
 from array import array
 from collections import deque
 from pathlib import Path
@@ -76,18 +77,6 @@ class Microphone:
         with self.lock:
             if self.stream is not None:
                 return
-            info = sd.query_devices(self.device, "input")
-            rate = int(info["default_samplerate"])
-            if rate not in (8000, 16000, 32000, 48000):
-                rate = 16000
-                sd.check_input_settings(device=self.device, channels=1, dtype='int16', samplerate=rate)
-            self.sample_rate = rate
-            self.samples_seen = self.peak = 0
-            self.recognizer = KaldiRecognizer(self.model, rate)
-            self.decoder = UtteranceDecoder(self.recognizer, webrtcvad.Vad(2), rate)
-            self.events.clear()
-            self.reset_requested.clear()
-            self._drain()
 
             def callback(data, frames, timing, status):
                 if self.muted.is_set():
@@ -97,14 +86,41 @@ class Microphone:
                 except queue.Full:
                     self.reset_requested.set()  # Drop old speech rather than replay a late command.
 
-            stream = sd.RawInputStream(samplerate=rate, blocksize=max(800, rate // 10),
-                                       device=self.device, channels=1, dtype="int16", callback=callback)
-            try:
-                stream.start()
-            except BaseException:
-                stream.close()
-                raise
-            self.stream = stream
+            for attempt in range(3):
+                stream = None
+                try:
+                    info = sd.query_devices(self.device, "input")
+                    rate = int(info["default_samplerate"])
+                    if rate not in (8000, 16000, 32000, 48000):
+                        rate = 16000
+                        sd.check_input_settings(device=self.device, channels=1, dtype='int16', samplerate=rate)
+                    self.sample_rate = rate
+                    self.samples_seen = self.peak = 0
+                    self.recognizer = KaldiRecognizer(self.model, rate)
+                    self.decoder = UtteranceDecoder(self.recognizer, webrtcvad.Vad(2), rate)
+                    self.events.clear()
+                    self.reset_requested.clear()
+                    self._drain()
+
+                    stream = sd.RawInputStream(samplerate=rate, blocksize=max(800, rate // 10),
+                                               device=self.device, channels=1, dtype="int16", callback=callback)
+                    stream.start()
+                    self.stream = stream
+                    return
+                except Exception as error:
+                    if stream is not None:
+                        try:
+                            stream.close()
+                        except Exception:
+                            pass  # Preserve the original startup error.
+                    internal = isinstance(error, sd.PortAudioError) and len(error.args) > 1 and error.args[1] == -9986
+                    if not internal:
+                        raise
+                    if attempt == 2:
+                        raise RuntimeError("无法打开麦克风（PortAudio -9986，已重试）。请确认麦克风授权与系统输入设备，关闭占用设备的程序后重新按 QQ；仍失败时重启游戏。") from error
+                    # Device routes may be settling after a previous stream closes. Re-query only
+                    # the requested/default device; never switch to another microphone silently.
+                    time.sleep((0.15, 0.35)[attempt])
 
     def _drain(self):
         while True:

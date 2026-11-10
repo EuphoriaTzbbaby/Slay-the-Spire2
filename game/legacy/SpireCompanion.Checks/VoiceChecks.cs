@@ -52,6 +52,7 @@ internal static class VoiceChecks
                 // A following idle/listening event must keep an actionable TTS error visible.
                 Require(await errors.WaitAsync(TimeSpan.FromSeconds(5)));
                 Require(await errors.WaitAsync(TimeSpan.FromSeconds(5)));
+                Require(!client.IsSpeaking);
                 Require(await client.InterruptAsync());
                 Require(await inputs.WaitAsync(TimeSpan.FromSeconds(5)));
                 Require(await inputs.WaitAsync(TimeSpan.FromSeconds(5)));

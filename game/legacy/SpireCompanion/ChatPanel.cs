@@ -28,6 +28,10 @@ internal sealed partial class ChatPanel : IDisposable
     private readonly VBoxContainer log = new() { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
     private readonly LineEdit question = new() { PlaceholderText = "问问搭子，或点击分析当前局面", MaxLength = 4000 };
     private readonly Label voicePreview = new() { Visible = false, AutowrapMode = TextServer.AutowrapMode.WordSmart };
+    private readonly HBoxContainer voiceTurn = new() { Visible = false };
+    private readonly Label voiceTurnStatus = new() { AutowrapMode = TextServer.AutowrapMode.WordSmart, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+    private readonly Button interruptSpeech = new() { Text = "打断并说话", Visible = false };
+    public event Action? InterruptSpeech;
     private readonly Button test = new() { Text = "测试连接" };
     private CancellationTokenSource? probe;
     private readonly Button send = new() { Text = "发送" };
@@ -99,6 +103,12 @@ internal sealed partial class ChatPanel : IDisposable
         transcriptCard.AddChild(logScroll);
         voicePreview.AddThemeColorOverride("font_color", UiStyle.Muted);
         chat.AddChild(voicePreview);
+        voiceTurnStatus.AddThemeFontSizeOverride("font_size", 14);
+        voiceTurn.AddChild(voiceTurnStatus);
+        UiStyle.Size(interruptSpeech, 34, 108);
+        interruptSpeech.Pressed += () => InterruptSpeech?.Invoke();
+        voiceTurn.AddChild(interruptSpeech);
+        chat.AddChild(voiceTurn);
         chat.AddChild(question);
         var buttons = new HFlowContainer();
         buttons.AddThemeConstantOverride("separation", 8);
@@ -273,6 +283,14 @@ internal sealed partial class ChatPanel : IDisposable
     }
 
     public bool Busy => busy;
+
+    public void ShowVoiceTurn(bool active, bool speaking, bool listening, bool stopping)
+    {
+        voiceTurn.Visible = active;
+        interruptSpeech.Visible = speaking || stopping;
+        interruptSpeech.Disabled = stopping;
+        voiceTurnStatus.Text = stopping ? "正在停止播报，请稍候…" : speaking ? "AI 正在播报，暂不收音。" : listening ? "可以说话；QQ 关闭语音。" : "语音未就绪，请查看设置中的状态。";
+    }
 
     public void ShowVoicePreview(string? text)
     {
